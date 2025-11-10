@@ -23,9 +23,11 @@
 
       <label>Bubbles
         <select id="bubbles">
-          <option value="tapioca">Tapioca</option>
-          <option value="popping_mango">Popping Mango</option>
-          <option value="mini_pearls">Mini Pearls</option>
+          <option value="mango">Mango</option>
+          <option value="peach">Peach</option>
+          <option value="passion_fruit">Passion Fruit</option>
+          <option value="lychee">Lychee</option>
+          <option value="pomegranate">Pomegranate</option>
         </select>
       </label>
 
@@ -33,7 +35,9 @@
         <select id="syrup">
           <option value="mango">Mango</option>
           <option value="peach">Peach</option>
-          <option value="lychee">Lychee</option>
+          <option value="passion_fruit">Passion Fruit</option>
+          <option value="strawberry">Strawberry</option>
+          <option value="pomegranate">Pomegranate</option>
         </select>
       </label>
 
@@ -75,10 +79,10 @@
         "b.sargsyan@student.uwcdilijan.am",
         "e.mosoian@student.uwcdilijan.am"
       ];
-     if (!allowed.includes(user.email.toLowerCase())) {
-       auth.signOut();
-       return window.location = "index.html";
-     }
+      if (!allowed.includes(user.email.toLowerCase())) {
+        auth.signOut();
+        return window.location = "index.html";
+      }
       document.getElementById('who').textContent = user.email;
     });
 
