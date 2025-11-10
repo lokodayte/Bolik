@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bubble Tea — Live Orders (Ella)</title>
+  <title>Bubble Tea — Live Orders (Elina)</title>
   <link rel="stylesheet" href="style.css" />
   <style>
     .done-btn {
@@ -31,11 +31,24 @@
       background: #1f7aef;
       color: #fff;
     }
+    .delete-all {
+      background: #c0392b;
+      border: none;
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+    h4.date-group {
+      margin-top: 16px;
+      color: #1f7aef;
+    }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <h2>Bubble Tea — Live Orders</h2>
+    <h2>Bubble Tea — Orders Dashboard</h2>
     <div>
       <span id="who"></span>
       <button id="logoutBtn">Logout</button>
@@ -53,12 +66,14 @@
       <p>Cash: <strong id="cashTotal">0</strong> AMD</p>
       <p>Card: <strong id="cardTotal">0</strong> AMD</p>
       <p>Total orders today: <strong id="countToday">0</strong></p>
+      <p><b>Total money made today: <span id="moneyToday">0</span> AMD</b></p>
     </section>
 
     <hr />
 
     <section>
       <h3 id="listTitle">Live orders</h3>
+      <button id="deleteAllBtn" class="delete-all" style="display:none;">Delete All</button>
       <ul id="ordersList"></ul>
     </section>
   </main>
@@ -71,59 +86,85 @@
   <script>
     const auth = firebase.auth();
     const db = firebase.firestore();
-    let currentView = "active"; // 'active' or 'archive'
+
+    let currentView = "active";
     let unsubscribeListener = null;
+    let totalsCache = { cash: 0, card: 0, count: 0 };
 
     function renderOrders(snapshot) {
       const list = document.getElementById('ordersList');
       list.innerHTML = '';
-      let cashTotal = 0, cardTotal = 0, countToday = 0;
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
-      snapshot.forEach(doc => {
-        const o = doc.data();
-        const li = document.createElement('li');
-        const ts = o.createdAt ? o.createdAt.toDate() : new Date();
-        const dateStr = ts.toLocaleString();
+      // If active tab: show totals
+      if (currentView === "active") {
+        let cashTotal = totalsCache.cash;
+        let cardTotal = totalsCache.card;
+        let countToday = totalsCache.count;
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
-        li.innerHTML = `<strong>${o.customer}</strong> — ${o.bubbles}, ${o.syrup}, ${o.tea} — ${o.payment} — ${o.price} AMD<br/>
-                        <small>By ${o.createdBy} at ${dateStr}</small>`;
+        snapshot.forEach(doc => {
+          const o = doc.data();
+          const li = document.createElement('li');
+          const ts = o.createdAt ? o.createdAt.toDate() : new Date();
+          const dateStr = ts.toLocaleString();
 
-        if (currentView === "active") {
+          li.innerHTML = `<strong>${o.customer}</strong> — ${o.bubbles}, ${o.syrup}, ${o.tea} — ${o.payment} — ${o.price} AMD<br/>
+                          <small>By ${o.createdBy} at ${dateStr}</small>`;
           const btn = document.createElement('button');
           btn.textContent = "Done";
           btn.className = "done-btn";
           btn.onclick = () => markAsDone(doc.id, o);
           li.appendChild(btn);
-        }
+          list.appendChild(li);
 
-        list.appendChild(li);
+          if (ts >= start && ts < end) {
+            countToday++;
+            if (o.payment === 'cash') cashTotal += Number(o.price || 0);
+            else if (o.payment === 'card') cardTotal += Number(o.price || 0);
+          }
+        });
 
-        if (currentView === "active" && ts >= start && ts < end) {
-          countToday++;
-          if (o.payment === 'cash') cashTotal += Number(o.price || 0);
-          else if (o.payment === 'card') cardTotal += Number(o.price || 0);
-        }
-      });
-
-      // update totals only for active list
-      if (currentView === "active") {
+        totalsCache = { cash: cashTotal, card: cardTotal, count: countToday };
         document.getElementById('cashTotal').textContent = cashTotal;
         document.getElementById('cardTotal').textContent = cardTotal;
         document.getElementById('countToday').textContent = countToday;
+        document.getElementById('moneyToday').textContent = cashTotal + cardTotal;
+      }
+
+      // If archive tab: group by date
+      if (currentView === "archive") {
+        const groups = {};
+        snapshot.forEach(doc => {
+          const o = doc.data();
+          const ts = o.finishedAt ? o.finishedAt.toDate() : new Date();
+          const dateLabel = ts.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+          if (!groups[dateLabel]) groups[dateLabel] = [];
+          groups[dateLabel].push({ ...o, ts });
+        });
+
+        for (const date in groups) {
+          const h4 = document.createElement('h4');
+          h4.className = "date-group";
+          h4.textContent = date;
+          list.appendChild(h4);
+          groups[date].forEach(o => {
+            const li = document.createElement('li');
+            li.innerHTML = `<strong>${o.customer}</strong> — ${o.bubbles}, ${o.syrup}, ${o.tea} — ${o.payment} — ${o.price} AMD<br/>
+                            <small>By ${o.createdBy} at ${o.ts.toLocaleString()}</small>`;
+            list.appendChild(li);
+          });
+        }
       }
     }
 
     async function markAsDone(orderId, orderData) {
       try {
-        // Copy to archive
         await db.collection('archive').add({
           ...orderData,
           finishedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        // Remove from active orders
         await db.collection('orders').doc(orderId).delete();
       } catch (err) {
         console.error("Error archiving order:", err);
@@ -131,20 +172,31 @@
       }
     }
 
-    function listenToCollection() {
-      // remove previous listener if exists
-      if (unsubscribeListener) unsubscribeListener();
+    async function deleteAllArchive() {
+      if (!confirm("Are you sure you want to delete ALL archived orders?")) return;
+      try {
+        const snap = await db.collection('archive').get();
+        const batch = db.batch();
+        snap.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        alert("✅ All archived orders deleted!");
+      } catch (err) {
+        alert("⚠️ Failed to delete: " + err.message);
+      }
+    }
 
+    function listenToCollection() {
+      if (unsubscribeListener) unsubscribeListener();
       const collectionName = currentView === "active" ? "orders" : "archive";
       document.getElementById('listTitle').textContent =
         currentView === "active" ? "Live orders" : "Archived orders";
-
+      document.getElementById('deleteAllBtn').style.display =
+        currentView === "archive" ? "inline-block" : "none";
       unsubscribeListener = db.collection(collectionName)
         .orderBy('createdAt', 'desc')
         .onSnapshot(renderOrders, err => console.error('listen error', err));
     }
 
-    // Auth check
     auth.onAuthStateChanged(user => {
       if (!user) return window.location = "index.html";
       const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoian@student.uwcdilijan.am"];
@@ -158,7 +210,6 @@
 
     document.getElementById('logoutBtn').addEventListener('click', ()=> auth.signOut().then(()=>window.location='index.html'));
 
-    // Tab switching
     document.getElementById('activeTab').addEventListener('click', () => {
       currentView = "active";
       document.getElementById('activeTab').classList.add("active");
@@ -174,6 +225,8 @@
       document.getElementById('totalsSection').style.display = "none";
       listenToCollection();
     });
+
+    document.getElementById('deleteAllBtn').addEventListener('click', deleteAllArchive);
   </script>
 </body>
 </html>
