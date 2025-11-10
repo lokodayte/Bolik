@@ -75,10 +75,10 @@
         "b.sargsyan@student.uwcdilijan.am",
         "e.mosoian@student.uwcdilijan.am"
       ];
-      if (!allowed.includes(user.email.toLowerCase())) {
-        auth.signOut();
-        return window.location = "index.html";
-      }
+     if (!allowed.includes(user.email.toLowerCase())) {
+       auth.signOut();
+       return window.location = "index.html";
+     }
       document.getElementById('who').textContent = user.email;
     });
 
