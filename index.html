@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bubble Tea CAS — Login</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="card">
+    <h1>Bubble Tea CAS — Login</h1>
+    <form id="loginForm">
+      <label>
+        Email
+        <input id="email" type="email" required />
+      </label>
+      <label>
+        Password
+        <input id="password" type="password" required />
+      </label>
+      <button type="submit">Sign in</button>
+    </form>
+
+    <p id="msg" class="muted"></p>
+
+    <p class="small">
+      If you are Boris: open <a href="order.html">Order page</a>.
+      If you are Ella: open <a href="view.html">View page</a>.
+    </p>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="firebase.js"></script>
+  <script>
+    // Allowed emails (exact)
+    const ALLOWED = [
+      "b.sargsyan@student.uwcdilijan.am",
+      "e.mosoyan@student.uwcdilijan.am"
+    ];
+
+    const auth = firebase.auth();
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      try {
+        const cred = await auth.signInWithEmailAndPassword(email, password);
+        const userEmail = cred.user.email;
+        if (!ALLOWED.includes(userEmail)) {
+          await auth.signOut();
+          document.getElementById('msg').textContent = "This account is not allowed on this site.";
+          return;
+        }
+        // redirect based on user
+        if (userEmail === ALLOWED[0]) window.location = "order.html";
+        else window.location = "view.html";
+      } catch (err) {
+        document.getElementById('msg').textContent = "Sign-in failed: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
