@@ -68,47 +68,38 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="firebase.js"></script>
-  <script>
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase.js"></script>
 
-    // redirect to login if not allowed
-    auth.onAuthStateChanged(user => {
-      if (!user) return window.location = "index.html";
-      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoian@student.uwcdilijan.am"];
-      if (!allowed.includes(user.email)) {
-        auth.signOut();
-        return window.location = "index.html";
-      }
-      document.getElementById('who').textContent = user.email;
-    });
+<script>
+  const auth = firebase.auth();
+  const db = firebase.firestore();
 
-    document.getElementById('logoutBtn').addEventListener('click', ()=> auth.signOut().then(()=>window.location='index.html'));
+  document.getElementById('orderForm').addEventListener('submit', async (e) => {
+    e.preventDefault(); // stops default refresh
+    const customer = document.getElementById('customer').value.trim();
+    const bubbles = document.getElementById('bubbles').value;
+    const syrup = document.getElementById('syrup').value;
+    const tea = document.getElementById('tea').value;
+    const payment = document.getElementById('payment').value;
+    const price = Number(document.getElementById('price').value) || 0;
 
-    document.getElementById('orderForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const customer = document.getElementById('customer').value.trim();
-      const bubbles = document.getElementById('bubbles').value;
-      const syrup = document.getElementById('syrup').value;
-      const tea = document.getElementById('tea').value;
-      const payment = document.getElementById('payment').value;
-      const price = Number(document.getElementById('price').value) || 0;
-      const createdBy = auth.currentUser.email;
+    const order = {
+      customer, bubbles, syrup, tea, payment, price,
+      createdBy: auth.currentUser ? auth.currentUser.email : "unknown",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
 
-      const order = {
-        customer, bubbles, syrup, tea, payment, price,
-        createdBy,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      };
-
-      try {
-        await db.collection('orders').add(order);
-        document.getElementById('status').textContent = "Order submitted.";
-        document.getElementById('orderForm').reset();
-      } catch (err) {
-        document.getElementById('status').textContent = "Error: " + err.message;
-      }
-    });
-  </script>
+    try {
+      await db.collection('orders').add(order);
+      document.getElementById('status').textContent = "✅ Order submitted!";
+      document.getElementById('orderForm').reset();
+    } catch (err) {
+      document.getElementById('status').textContent = "⚠️ Error: " + err.message;
+    }
+  });
+</script>
 </body>
 </html>
