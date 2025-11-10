@@ -40,7 +40,6 @@
     const db = firebase.firestore();
 
     function startListening() {
-      // compute today's midnight range in the project's timezone: use client local date
       const now = new Date();
       const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -50,16 +49,11 @@
         .onSnapshot(snapshot => {
           const list = document.getElementById('ordersList');
           list.innerHTML = '';
-
-          let cashTotal = 0;
-          let cardTotal = 0;
-          let countToday = 0;
+          let cashTotal = 0, cardTotal = 0, countToday = 0;
 
           snapshot.forEach(doc => {
             const o = doc.data();
             const li = document.createElement('li');
-
-            // createdAt may be null for very new writes, use fallback
             const ts = o.createdAt ? o.createdAt.toDate() : new Date();
             const dateStr = ts.toLocaleString();
 
@@ -67,7 +61,6 @@
                             <small>By ${o.createdBy} at ${dateStr}</small>`;
             list.appendChild(li);
 
-            // check if order falls in today's range
             if (ts >= start && ts < end) {
               countToday++;
               if (o.payment === 'cash') cashTotal += Number(o.price || 0);
@@ -78,15 +71,13 @@
           document.getElementById('cashTotal').textContent = cashTotal;
           document.getElementById('cardTotal').textContent = cardTotal;
           document.getElementById('countToday').textContent = countToday;
-        }, err => {
-          console.error('listen error', err);
         });
     }
 
     auth.onAuthStateChanged(user => {
       if (!user) return window.location = "index.html";
-      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoian@student.uwcdilijan.am"];
-      if (!allowed.includes(user.email)) {
+      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoyan@student.uwcdilijan.am"];
+      if (!allowed.includes(user.email.toLowerCase())) {
         auth.signOut();
         return window.location = "index.html";
       }
