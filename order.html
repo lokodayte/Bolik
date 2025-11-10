@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bubble Tea — Order (Boris)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h2>Bubble Tea — Order</h2>
+    <div>
+      <span id="who"></span>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <main class="card">
+    <form id="orderForm">
+      <label>Customer name
+        <input id="customer" required placeholder="e.g., Anahit" />
+      </label>
+
+      <label>Bubbles
+        <select id="bubbles">
+          <option value="tapioca">Tapioca</option>
+          <option value="popping_mango">Popping Mango</option>
+          <option value="mini_pearls">Mini pearls</option>
+        </select>
+      </label>
+
+      <label>Syrup
+        <select id="syrup">
+          <option value="mango">Mango</option>
+          <option value="peach">Peach</option>
+          <option value="lychee">Lychee</option>
+          <option value="none">No syrup</option>
+        </select>
+      </label>
+
+      <label>Tea
+        <select id="tea">
+          <option value="green">Green</option>
+          <option value="black">Black</option>
+        </select>
+      </label>
+
+      <label>Payment type
+        <select id="payment">
+          <option value="cash">Cash</option>
+          <option value="card">Card</option>
+        </select>
+      </label>
+
+      <label>Price (AMD)
+        <input id="price" type="number" min="0" step="1" required />
+      </label>
+
+      <button type="submit">Finish (submit order)</button>
+    </form>
+
+    <p id="status" class="muted"></p>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="firebase.js"></script>
+  <script>
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // redirect to login if not allowed
+    auth.onAuthStateChanged(user => {
+      if (!user) return window.location = "index.html";
+      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoyan@student.uwcdilijan.am"];
+      if (!allowed.includes(user.email)) {
+        auth.signOut();
+        return window.location = "index.html";
+      }
+      document.getElementById('who').textContent = user.email;
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', ()=> auth.signOut().then(()=>window.location='index.html'));
+
+    document.getElementById('orderForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const customer = document.getElementById('customer').value.trim();
+      const bubbles = document.getElementById('bubbles').value;
+      const syrup = document.getElementById('syrup').value;
+      const tea = document.getElementById('tea').value;
+      const payment = document.getElementById('payment').value;
+      const price = Number(document.getElementById('price').value) || 0;
+      const createdBy = auth.currentUser.email;
+
+      const order = {
+        customer, bubbles, syrup, tea, payment, price,
+        createdBy,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      try {
+        await db.collection('orders').add(order);
+        document.getElementById('status').textContent = "Order submitted.";
+        document.getElementById('orderForm').reset();
+      } catch (err) {
+        document.getElementById('status').textContent = "Error: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
