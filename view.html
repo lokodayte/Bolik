@@ -5,6 +5,33 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Bubble Tea — Live Orders (Ella)</title>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    .done-btn {
+      background: #ff4747;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      padding: 6px 10px;
+      cursor: pointer;
+      margin-top: 6px;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .tabs button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      background: #ddd;
+    }
+    .tabs button.active {
+      background: #1f7aef;
+      color: #fff;
+    }
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -16,7 +43,12 @@
   </header>
 
   <main class="card">
-    <section>
+    <div class="tabs">
+      <button id="activeTab" class="active">Active Orders</button>
+      <button id="archiveTab">Archive</button>
+    </div>
+
+    <section id="totalsSection">
       <h3>Today's totals</h3>
       <p>Cash: <strong id="cashTotal">0</strong> AMD</p>
       <p>Card: <strong id="cardTotal">0</strong> AMD</p>
@@ -26,7 +58,7 @@
     <hr />
 
     <section>
-      <h3>Live orders</h3>
+      <h3 id="listTitle">Live orders</h3>
       <ul id="ordersList"></ul>
     </section>
   </main>
@@ -35,45 +67,84 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="firebase.js"></script>
+
   <script>
     const auth = firebase.auth();
     const db = firebase.firestore();
+    let currentView = "active"; // 'active' or 'archive'
+    let unsubscribeListener = null;
 
-    function startListening() {
+    function renderOrders(snapshot) {
+      const list = document.getElementById('ordersList');
+      list.innerHTML = '';
+      let cashTotal = 0, cardTotal = 0, countToday = 0;
       const now = new Date();
       const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
-      db.collection('orders')
-        .orderBy('createdAt', 'desc')
-        .onSnapshot(snapshot => {
-          const list = document.getElementById('ordersList');
-          list.innerHTML = '';
-          let cashTotal = 0, cardTotal = 0, countToday = 0;
+      snapshot.forEach(doc => {
+        const o = doc.data();
+        const li = document.createElement('li');
+        const ts = o.createdAt ? o.createdAt.toDate() : new Date();
+        const dateStr = ts.toLocaleString();
 
-          snapshot.forEach(doc => {
-            const o = doc.data();
-            const li = document.createElement('li');
-            const ts = o.createdAt ? o.createdAt.toDate() : new Date();
-            const dateStr = ts.toLocaleString();
+        li.innerHTML = `<strong>${o.customer}</strong> — ${o.bubbles}, ${o.syrup}, ${o.tea} — ${o.payment} — ${o.price} AMD<br/>
+                        <small>By ${o.createdBy} at ${dateStr}</small>`;
 
-            li.innerHTML = `<strong>${o.customer}</strong> — ${o.bubbles}, ${o.syrup}, ${o.tea} — ${o.payment} — ${o.price} AMD<br/>
-                            <small>By ${o.createdBy} at ${dateStr}</small>`;
-            list.appendChild(li);
+        if (currentView === "active") {
+          const btn = document.createElement('button');
+          btn.textContent = "Done";
+          btn.className = "done-btn";
+          btn.onclick = () => markAsDone(doc.id, o);
+          li.appendChild(btn);
+        }
 
-            if (ts >= start && ts < end) {
-              countToday++;
-              if (o.payment === 'cash') cashTotal += Number(o.price || 0);
-              else if (o.payment === 'card') cardTotal += Number(o.price || 0);
-            }
-          });
+        list.appendChild(li);
 
-          document.getElementById('cashTotal').textContent = cashTotal;
-          document.getElementById('cardTotal').textContent = cardTotal;
-          document.getElementById('countToday').textContent = countToday;
-        });
+        if (currentView === "active" && ts >= start && ts < end) {
+          countToday++;
+          if (o.payment === 'cash') cashTotal += Number(o.price || 0);
+          else if (o.payment === 'card') cardTotal += Number(o.price || 0);
+        }
+      });
+
+      // update totals only for active list
+      if (currentView === "active") {
+        document.getElementById('cashTotal').textContent = cashTotal;
+        document.getElementById('cardTotal').textContent = cardTotal;
+        document.getElementById('countToday').textContent = countToday;
+      }
     }
 
+    async function markAsDone(orderId, orderData) {
+      try {
+        // Copy to archive
+        await db.collection('archive').add({
+          ...orderData,
+          finishedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        // Remove from active orders
+        await db.collection('orders').doc(orderId).delete();
+      } catch (err) {
+        console.error("Error archiving order:", err);
+        alert("⚠️ Could not move order to archive.");
+      }
+    }
+
+    function listenToCollection() {
+      // remove previous listener if exists
+      if (unsubscribeListener) unsubscribeListener();
+
+      const collectionName = currentView === "active" ? "orders" : "archive";
+      document.getElementById('listTitle').textContent =
+        currentView === "active" ? "Live orders" : "Archived orders";
+
+      unsubscribeListener = db.collection(collectionName)
+        .orderBy('createdAt', 'desc')
+        .onSnapshot(renderOrders, err => console.error('listen error', err));
+    }
+
+    // Auth check
     auth.onAuthStateChanged(user => {
       if (!user) return window.location = "index.html";
       const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoyan@student.uwcdilijan.am"];
@@ -82,10 +153,27 @@
         return window.location = "index.html";
       }
       document.getElementById('who').textContent = user.email;
-      startListening();
+      listenToCollection();
     });
 
     document.getElementById('logoutBtn').addEventListener('click', ()=> auth.signOut().then(()=>window.location='index.html'));
+
+    // Tab switching
+    document.getElementById('activeTab').addEventListener('click', () => {
+      currentView = "active";
+      document.getElementById('activeTab').classList.add("active");
+      document.getElementById('archiveTab').classList.remove("active");
+      document.getElementById('totalsSection').style.display = "block";
+      listenToCollection();
+    });
+
+    document.getElementById('archiveTab').addEventListener('click', () => {
+      currentView = "archive";
+      document.getElementById('archiveTab').classList.add("active");
+      document.getElementById('activeTab').classList.remove("active");
+      document.getElementById('totalsSection').style.display = "none";
+      listenToCollection();
+    });
   </script>
 </body>
 </html>
