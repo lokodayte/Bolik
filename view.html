@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bubble Tea — Live Orders (Ella)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h2>Bubble Tea — Live Orders</h2>
+    <div>
+      <span id="who"></span>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <main class="card">
+    <section>
+      <h3>Today's totals</h3>
+      <p>Cash: <strong id="cashTotal">0</strong> AMD</p>
+      <p>Card: <strong id="cardTotal">0</strong> AMD</p>
+      <p>Total orders today: <strong id="countToday">0</strong></p>
+    </section>
+
+    <hr />
+
+    <section>
+      <h3>Live orders</h3>
+      <ul id="ordersList"></ul>
+    </section>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="firebase.js"></script>
+  <script>
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    function startListening() {
+      // compute today's midnight range in the project's timezone: use client local date
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+      db.collection('orders')
+        .orderBy('createdAt', 'desc')
+        .onSnapshot(snapshot => {
+          const list = document.getElementById('ordersList');
+          list.innerHTML = '';
+
+          let cashTotal = 0;
+          let cardTotal = 0;
+          let countToday = 0;
+
+          snapshot.forEach(doc => {
+            const o = doc.data();
+            const li = document.createElement('li');
+
+            // createdAt may be null for very new writes, use fallback
+            const ts = o.createdAt ? o.createdAt.toDate() : new Date();
+            const dateStr = ts.toLocaleString();
+
+            li.innerHTML = `<strong>${o.customer}</strong> — ${o.bubbles}, ${o.syrup}, ${o.tea} — ${o.payment} — ${o.price} AMD<br/>
+                            <small>By ${o.createdBy} at ${dateStr}</small>`;
+            list.appendChild(li);
+
+            // check if order falls in today's range
+            if (ts >= start && ts < end) {
+              countToday++;
+              if (o.payment === 'cash') cashTotal += Number(o.price || 0);
+              else if (o.payment === 'card') cardTotal += Number(o.price || 0);
+            }
+          });
+
+          document.getElementById('cashTotal').textContent = cashTotal;
+          document.getElementById('cardTotal').textContent = cardTotal;
+          document.getElementById('countToday').textContent = countToday;
+        }, err => {
+          console.error('listen error', err);
+        });
+    }
+
+    auth.onAuthStateChanged(user => {
+      if (!user) return window.location = "index.html";
+      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoyan@student.uwcdilijan.am"];
+      if (!allowed.includes(user.email)) {
+        auth.signOut();
+        return window.location = "index.html";
+      }
+      document.getElementById('who').textContent = user.email;
+      startListening();
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', ()=> auth.signOut().then(()=>window.location='index.html'));
+  </script>
+</body>
+</html>
