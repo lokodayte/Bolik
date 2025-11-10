@@ -32,35 +32,39 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="firebase.js"></script>
-  <script>
-    // Allowed emails (exact)
-    const ALLOWED = [
-      "b.sargsyan@student.uwcdilijan.am",
-      "e.mosoian@student.uwcdilijan.am"
-    ];
+<script>
+  // Allowed emails (lowercase)
+  const ALLOWED = [
+    "b.sargsyan@student.uwcdilijan.am",
+    "e.mosoyan@student.uwcdilijan.am"
+  ];
 
-    const auth = firebase.auth();
+  const auth = firebase.auth();
 
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim().toLowerCase();
+    const password = document.getElementById('password').value;
 
-      try {
-        const cred = await auth.signInWithEmailAndPassword(email, password);
-        const userEmail = cred.user.email;
-        if (!ALLOWED.includes(userEmail)) {
-          await auth.signOut();
-          document.getElementById('msg').textContent = "This account is not allowed on this site.";
-          return;
-        }
-        // redirect based on user
-        if (userEmail === ALLOWED[0]) window.location = "order.html";
-        else window.location = "view.html";
-      } catch (err) {
-        document.getElementById('msg').textContent = "Sign-in failed: " + err.message;
+    try {
+      const cred = await auth.signInWithEmailAndPassword(email, password);
+      const userEmail = cred.user.email.toLowerCase();
+
+      if (!ALLOWED.includes(userEmail)) {
+        await auth.signOut();
+        document.getElementById('msg').textContent =
+          "This account is not allowed on this site.";
+        return;
       }
-    });
-  </script>
+
+      // redirect
+      if (userEmail === ALLOWED[0]) window.location = "order.html";
+      else if (userEmail === ALLOWED[1]) window.location = "view.html";
+    } catch (err) {
+      document.getElementById('msg').textContent = "Sign-in failed: " + err.message;
+    }
+  });
+</script>
+
 </body>
 </html>
