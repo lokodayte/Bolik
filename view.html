@@ -370,7 +370,8 @@
           innerUl.style.display = isTodayGroup ? "block" : "none";
 
           group.orders
-            .sort((a, b) => a.ts - b.ts)
+            // NEWEST first inside each day
+            .sort((a, b) => b.ts - a.ts)
             .forEach(entry => {
               const o = entry.data;
               const orderLi = document.createElement("li");
