@@ -31,7 +31,7 @@
     }
     .tabs button.active {
       background: #1f7aef;
-      color: #000000;
+      color: #fff;
     }
     .delete-all {
       background: #c0392b;
@@ -63,7 +63,6 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      color: black;
     }
     .archive-header span.label {
       flex: 1;
@@ -76,6 +75,14 @@
       list-style: none;
       margin: 0;
       padding: 6px 10px 8px 20px;
+    }
+    #staffSection ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    #staffSection li {
+      padding: 6px 0;
+      border-bottom: 1px solid #eee;
     }
   </style>
 </head>
@@ -110,12 +117,52 @@
       <ul id="ordersList"></ul>
     </section>
 
+    <!-- Owners-only: manage staff roles + create staff accounts -->
+    <section id="staffSection" style="display:none; margin-top:20px;">
+      <h3>Create staff login (owners only)</h3>
+      <p class="muted">This creates a Firebase login and adds them to staff in one step.</p>
+      <form id="createStaffAccountForm">
+        <label>Staff email
+          <input id="createStaffEmail" type="email" required />
+        </label>
+        <label>Temporary password
+          <input id="createStaffPassword" type="password" required />
+        </label>
+        <label>Role
+          <select id="createStaffRole">
+            <option value="viewer">Viewer (bar staff – see orders)</option>
+            <option value="order">Order taker (front – enters orders)</option>
+          </select>
+        </label>
+        <button type="submit">Create staff account</button>
+      </form>
+
+      <hr />
+
+      <h3>Staff roles (change role only)</h3>
+      <form id="addStaffForm">
+        <label>Staff email
+          <input id="staffEmail" type="email" required />
+        </label>
+        <label>Role
+          <select id="staffRole">
+            <option value="viewer">Viewer (bar staff – see orders)</option>
+            <option value="order">Order taker (front – enters orders)</option>
+          </select>
+        </label>
+        <button type="submit">Add / update staff role</button>
+      </form>
+
+      <h4>Current staff</h4>
+      <ul id="staffList"></ul>
+    </section>
   </main>
 
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
   <script src="firebase.js"></script>
 
   <script>
@@ -126,6 +173,7 @@
 
     const auth = firebase.auth();
     const db = firebase.firestore();
+    const functions = firebase.functions();
 
     let currentView = "active";
     let unsubscribeListener = null;
@@ -388,30 +436,54 @@
 
     function setupStaffManagement() {
       const staffSection = document.getElementById("staffSection");
-      staffSection.style.display = "block";
+      const createForm = document.getElementById("createStaffAccountForm");
+      const addForm = document.getElementById("addStaffForm");
+      const staffList = document.getElementById("staffList");
 
-      const form = document.getElementById("addStaffForm");
-      const emailInput = document.getElementById("staffEmail");
-      const roleSelect = document.getElementById("staffRole");
-      const list = document.getElementById("staffList");
+      // Cloud Function: create Auth user + staff doc
+      const createStaffUserFn = functions.httpsCallable("createStaffUser");
 
-      form.addEventListener("submit", async (e) => {
+      createForm.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const email = emailInput.value.trim().toLowerCase();
-        const role = roleSelect.value;
+        const email = document.getElementById("createStaffEmail").value.trim().toLowerCase();
+        const password = document.getElementById("createStaffPassword").value;
+        const role = document.getElementById("createStaffRole").value;
+
+        if (!email || !password) {
+          alert("Email and password are required.");
+          return;
+        }
+
+        try {
+          await createStaffUserFn({ email, password, role });
+          document.getElementById("createStaffEmail").value = "";
+          document.getElementById("createStaffPassword").value = "";
+          alert("Staff account created successfully.");
+        } catch (err) {
+          console.error(err);
+          alert("Failed to create staff user: " + (err.message || err));
+        }
+      });
+
+      // Change role only (or add staff doc if already created manually)
+      addForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const email = document.getElementById("staffEmail").value.trim().toLowerCase();
+        const role = document.getElementById("staffRole").value;
         if (!email) return;
 
         try {
           await db.collection("staff").doc(email).set({ email, role });
-          emailInput.value = "";
-          alert("Staff member added/updated.");
+          document.getElementById("staffEmail").value = "";
+          alert("Staff role added/updated.");
         } catch (err) {
           alert(err.message);
         }
       });
 
+      // Live list of staff
       db.collection("staff").orderBy("email").onSnapshot(snap => {
-        list.innerHTML = "";
+        staffList.innerHTML = "";
         snap.forEach(doc => {
           const data = doc.data();
           const email = data.email || doc.id;
@@ -430,9 +502,14 @@
             li.appendChild(delBtn);
           }
 
-          list.appendChild(li);
+          staffList.appendChild(li);
         });
       });
+
+      // Initially visible only if owner and on Active tab
+      if (isOwner && currentView === "active") {
+        staffSection.style.display = "block";
+      }
     }
 
     async function deleteStaff(email) {
@@ -476,9 +553,12 @@
           return;
         }
       } else {
-        // Owner: show totals and staff management
+        // Owner: show totals and staff management (on active tab only)
         document.getElementById("totalsSection").style.display = "block";
         setupStaffManagement();
+        if (currentView === "active") {
+          document.getElementById("staffSection").style.display = "block";
+        }
       }
 
       listenToCollection();
@@ -494,6 +574,7 @@
       document.getElementById("archiveTab").classList.remove("active");
       if (isOwner) {
         document.getElementById("totalsSection").style.display = "block";
+        document.getElementById("staffSection").style.display = "block";
       }
       listenToCollection();
     });
@@ -503,6 +584,8 @@
       document.getElementById("archiveTab").classList.add("active");
       document.getElementById("activeTab").classList.remove("active");
       document.getElementById("totalsSection").style.display = "none";
+      // HIDE staff panel on archive like you wanted
+      document.getElementById("staffSection").style.display = "none";
       listenToCollection();
     });
 
