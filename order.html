@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bubble Tea — Order (Boris)</title>
+  <title>Bubble Tea — Order</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -23,28 +23,28 @@
 
       <label>Bubbles
         <select id="bubbles">
-          <option value="mango">Mango</option>
-          <option value="peach">Peach</option>
-          <option value="passion_fruit">Passion Fruit</option>
-          <option value="lychee">Lychee</option>
-          <option value="pomegranate">Pomegranate</option>
+          <option value="mango">Mango bubbles (yellow)</option>
+          <option value="peach">Peach bubbles (orange)</option>
+          <option value="passion_fruit">Passion fruit bubbles</option>
+          <option value="lychee">Lychee bubbles</option>
+          <option value="pomegranate">Pomegranate bubbles (red)</option>
         </select>
       </label>
 
       <label>Syrup
         <select id="syrup">
-          <option value="mango">Mango</option>
-          <option value="peach">Peach</option>
-          <option value="passion_fruit">Passion Fruit</option>
-          <option value="strawberry">Strawberry</option>
-          <option value="pomegranate">Pomegranate</option>
+          <option value="mango">Mango syrup</option>
+          <option value="peach">Peach syrup</option>
+          <option value="passion_fruit">Passion fruit syrup</option>
+          <option value="strawberry">Strawberry syrup</option>
+          <option value="pomegranate">Pomegranate syrup</option>
         </select>
       </label>
 
       <label>Tea
         <select id="tea">
-          <option value="green">Green</option>
-          <option value="black">Black</option>
+          <option value="green">Green tea</option>
+          <option value="black">Black tea</option>
         </select>
       </label>
 
@@ -64,58 +64,89 @@
     <p id="status" class="muted"></p>
   </main>
 
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="firebase.js"></script>
+
   <script>
+    const OWNER_EMAILS = [
+      "b.sargsyan@student.uwcdilijan.am",
+      "e.mosoian@student.uwcdilijan.am"
+    ];
+
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // Check authentication
-    auth.onAuthStateChanged(user => {
-      if (!user) return window.location = "index.html";
-      const allowed = [
-        "b.sargsyan@student.uwcdilijan.am",
-        "e.mosoian@student.uwcdilijan.am",
-        "m.saad@student.uwcdilijan.am",
-      "u.kubanychbekova@student.uwcdilijan.am"
-      ];
-      if (!allowed.includes(user.email.toLowerCase())) {
-        auth.signOut();
-        return window.location = "index.html";
+    // Check authentication and role
+    auth.onAuthStateChanged(async user => {
+      if (!user) {
+        window.location = "index.html";
+        return;
       }
-      document.getElementById('who').textContent = user.email;
+
+      const email = user.email.toLowerCase();
+      let allowed = false;
+
+      if (OWNER_EMAILS.includes(email)) {
+        // Owners can also take orders if they want
+        allowed = true;
+      } else {
+        try {
+          const doc = await db.collection("staff").doc(email).get();
+          const role = doc.exists ? doc.data().role : null;
+          if (role === "order") allowed = true;
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      if (!allowed) {
+        await auth.signOut();
+        window.location = "index.html";
+        return;
+      }
+
+      document.getElementById("who").textContent = email;
     });
 
     // Logout
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById("logoutBtn").addEventListener("click", () => {
       auth.signOut().then(() => window.location = "index.html");
     });
 
     // Submit order
-    document.getElementById('orderForm').addEventListener('submit', async (e) => {
+    document.getElementById("orderForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const customer = document.getElementById('customer').value.trim();
-      const bubbles = document.getElementById('bubbles').value;
-      const syrup = document.getElementById('syrup').value;
-      const tea = document.getElementById('tea').value;
-      const payment = document.getElementById('payment').value;
-      const price = Number(document.getElementById('price').value) || 0;
+      const customer = document.getElementById("customer").value.trim();
+      const bubbles = document.getElementById("bubbles").value;
+      const syrup = document.getElementById("syrup").value;
+      const tea = document.getElementById("tea").value;
+      const payment = document.getElementById("payment").value;
+      const price = Number(document.getElementById("price").value) || 0;
 
       const user = auth.currentUser;
-      if (!user) return document.getElementById('status').textContent = "⚠️ You must be logged in.";
+      if (!user) {
+        document.getElementById("status").textContent = "You must be logged in.";
+        return;
+      }
 
       try {
-        await db.collection('orders').add({
-          customer, bubbles, syrup, tea, payment, price,
+        await db.collection("orders").add({
+          customer,
+          bubbles,
+          syrup,
+          tea,
+          payment,
+          price,
           createdBy: user.email,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        document.getElementById('status').textContent = "✅ Order submitted successfully!";
-        document.getElementById('orderForm').reset();
+        document.getElementById("status").textContent = "Order submitted successfully!";
+        document.getElementById("orderForm").reset();
       } catch (err) {
-        document.getElementById('status').textContent = "⚠️ Error: " + err.message;
+        document.getElementById("status").textContent = "Error: " + err.message;
       }
     });
   </script>
