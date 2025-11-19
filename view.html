@@ -197,7 +197,7 @@
 
     auth.onAuthStateChanged(user => {
       if (!user) return window.location = "index.html";
-      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoian@student.uwcdilijan.am", "m.saad@student.uwcdilijan.am"];
+      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoian@student.uwcdilijan.am", "m.saad@student.uwcdilijan.am", "u.kubanychbekova@student.uwcdilijan.am"];
       if (!allowed.includes(user.email.toLowerCase())) {
         auth.signOut();
         return window.location = "index.html";
