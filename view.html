@@ -134,356 +134,282 @@
             <option value="order">Order taker (front – enters orders)</option>
           </select>
         </label>
-        <button type="submit">Create staff account</button>
-      </form>
-
-      <hr />
-
-      <h3>Staff roles (change role only)</h3>
-      <form id="addStaffForm">
-        <label>Staff email
-          <input id="staffEmail" type="email" required />
-        </label>
-        <label>Role
-          <select id="staffRole">
-            <option value="viewer">Viewer (bar staff – see orders)</option>
-            <option value="order">Order taker (front – enters orders)</option>
-          </select>
-        </label>
-        <button type="submit">Add / update staff role</button>
-      </form>
-
-      <h4>Current staff</h4>
-      <ul id="staffList"></ul>
-    </section>
-  </main>
-
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
-  <script src="firebase.js"></script>
-
-  <script>
-    const OWNER_EMAILS = [
-      "b.sargsyan@student.uwcdilijan.am",
-      "e.mosoian@student.uwcdilijan.am"
-    ];
-
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-    const functions = firebase.functions();
-
-    let currentView = "active";
-    let unsubscribeListener = null;
-    let isOwner = false;
-
-    // More understandable labels for new staff
-    const BUBBLE_LABELS = {
-      mango: "Mango bubbles (yellow)",
-      peach: "Peach bubbles (orange)",
-      passion_fruit: "Passion fruit bubbles",
-      lychee: "Lychee bubbles",
-      pomegranate: "Pomegranate bubbles (red)"
-    };
-
-    const SYRUP_LABELS = {
-      mango: "Mango syrup",
-      peach: "Peach syrup",
-      passion_fruit: "Passion fruit syrup",
-      strawberry: "Strawberry syrup",
-      pomegranate: "Pomegranate syrup"
-    };
-
-    const TEA_LABELS = {
-      green: "Green tea",
-      black: "Black tea"
-    };
-
-    function formatOrderDetails(o) {
-      const bubbles = BUBBLE_LABELS[o.bubbles] || o.bubbles;
-      const syrup = SYRUP_LABELS[o.syrup] || o.syrup;
-      const tea   = TEA_LABELS[o.tea] || o.tea;
-
-      const payment =
-        o.payment === "cash" ? "Cash" :
-        o.payment === "card" ? "Card" :
-        o.payment;
-
-      return `
-        Bubbles: ${bubbles} |
-        Syrup: ${syrup} |
-        Tea: ${tea} |
-        Payment: ${payment} |
-        Price: ${o.price || 0} AMD
-      `;
-    }
-
-    function renderOrders(snapshot) {
-      const list = document.getElementById("ordersList");
-      list.innerHTML = "";
-
-      if (currentView === "active") {
-        // ACTIVE tab: show current orders (oldest first) + today's totals for owners
-        let cashTotal = 0;
-        let cardTotal = 0;
-
-        const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-
-        snapshot.forEach(doc => {
-          const o = doc.data();
-          const li = document.createElement("li");
-          const ts = o.createdAt ? o.createdAt.toDate() : new Date();
-          const dateStr = ts.toLocaleString();
-
-          li.innerHTML = `
-            <strong>${o.customer}</strong><br/>
-            ${formatOrderDetails(o)}<br/>
-            <small>By ${o.createdBy} at ${dateStr}</small>
-          `;
-
-          const btn = document.createElement("button");
-          btn.textContent = "Done";
-          btn.className = "done-btn";
-          btn.onclick = () => markAsDone(doc.id, o);
-          li.appendChild(btn);
-
-          list.appendChild(li);
-
-          if (isOwner && ts >= start && ts < end) {
-            const price = Number(o.price || 0);
-            if (o.payment === "cash") cashTotal += price;
-            else if (o.payment === "card") cardTotal += price;
-          }
-        });
-
-        if (isOwner) {
-          document.getElementById("cashTotal").textContent = cashTotal;
-          document.getElementById("cardTotal").textContent = cardTotal;
-          document.getElementById("totalToday").textContent = cashTotal + cardTotal;
-        }
-      }
-
-      if (currentView === "archive") {
-        // ARCHIVE tab: accordion per date
-        const groups = {};
-
-        snapshot.forEach(doc => {
-          const o = doc.data();
-          const ts = o.finishedAt
-            ? o.finishedAt.toDate()
-            : (o.createdAt ? o.createdAt.toDate() : new Date());
-
-          const key = ts.toISOString().slice(0, 10); // YYYY-MM-DD
-          if (!groups[key]) {
-            groups[key] = { date: ts, orders: [] };
-          }
-          groups[key].orders.push({ id: doc.id, data: o, ts });
-        });
-
-        const todayKey = new Date().toISOString().slice(0, 10);
-
-        // Sort date keys NEWEST -> OLDEST
-        const dateKeys = Object.keys(groups).sort((a, b) => new Date(b) - new Date(a));
-
-        dateKeys.forEach(key => {
-          const group = groups[key];
-          const date = group.date;
-          const dateLabel = date.toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric"
-          });
-
-          // Calculate total income for that day
-          let dayTotal = 0;
-          group.orders.forEach(entry => {
-            dayTotal += Number(entry.data.price || 0);
-          });
-
-          const isTodayGroup = key === todayKey;
-
-          // Outer li = one "dropdown"
-          const groupLi = document.createElement("li");
-          groupLi.className = "archive-group";
-
-          const headerBtn = document.createElement("button");
-          headerBtn.type = "button";
-          headerBtn.className = "archive-header";
-
-          const labelSpan = document.createElement("span");
-          labelSpan.className = "label";
-
-          if (isOwner) {
-            labelSpan.textContent = `${dateLabel} — Total: ${dayTotal} AMD`;
-          } else {
-            labelSpan.textContent = dateLabel;
-          }
-
-          const chevronSpan = document.createElement("span");
-          chevronSpan.className = "chevron";
-          chevronSpan.textContent = isTodayGroup ? "▲" : "▼";
-
-          headerBtn.appendChild(labelSpan);
-          headerBtn.appendChild(chevronSpan);
-
-          const innerUl = document.createElement("ul");
-          innerUl.className = "archive-orders";
-          innerUl.style.display = isTodayGroup ? "block" : "none";
-
-          group.orders
-            // keep createdAt ascending inside each day (oldest first)
-            .sort((a, b) => a.ts - b.ts)
-            .forEach(entry => {
-              const o = entry.data;
-              const orderLi = document.createElement("li");
-              orderLi.innerHTML = `
-                <strong>${o.customer}</strong><br/>
-                ${formatOrderDetails(o)}<br/>
-                <small>By ${o.createdBy} at ${entry.ts.toLocaleString()}</small>
-              `;
-
-              if (isOwner) {
-                const delBtn = document.createElement("button");
-                delBtn.textContent = "Delete";
-                delBtn.className = "done-btn";
-                delBtn.style.background = "#7f8c8d";
-                delBtn.onclick = () => deleteArchiveOrder(entry.id);
-                orderLi.appendChild(delBtn);
-              }
-
-              innerUl.appendChild(orderLi);
-            });
-
-          headerBtn.addEventListener("click", () => {
-            const isHidden = innerUl.style.display === "none";
-            innerUl.style.display = isHidden ? "block" : "none";
-            chevronSpan.textContent = isHidden ? "▲" : "▼";
-          });
-
-          groupLi.appendChild(headerBtn);
-          groupLi.appendChild(innerUl);
-          list.appendChild(groupLi);
-        });
-      }
-    }
-
-    async function markAsDone(orderId, orderData) {
-      try {
-        await db.collection("archive").add({
-          ...orderData,
-          finishedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        await db.collection("orders").doc(orderId).delete();
-      } catch (err) {
-        console.error("Error archiving order:", err);
-        alert("Could not move order to archive.");
-      }
-    }
-
-    async function deleteAllArchive() {
-      if (!isOwner) {
-        alert("Only owners can delete all archived orders.");
-        return;
-      }
-      if (!confirm("Are you sure you want to delete ALL archived orders?")) return;
-
-      try {
-        const snap = await db.collection("archive").get();
-        const batch = db.batch();
-        snap.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-        alert("All archived orders deleted.");
-      } catch (err) {
-        alert("Failed to delete: " + err.message);
-      }
-    }
-
-    async function deleteArchiveOrder(id) {
-      if (!isOwner) {
-        alert("Only owners can delete archived orders.");
-        return;
-      }
-      if (!confirm("Delete this archived order?")) return;
-
-      try {
-        await db.collection("archive").doc(id).delete();
-      } catch (err) {
-        alert("Failed to delete order: " + err.message);
-      }
-    }
-
-    function listenToCollection() {
-      if (unsubscribeListener) unsubscribeListener();
-      const collectionName = currentView === "active" ? "orders" : "archive";
-
-      document.getElementById("listTitle").textContent =
-        currentView === "active" ? "Live orders" : "Archived orders";
-
-      document.getElementById("deleteAllBtn").style.display =
-        currentView === "archive" && isOwner ? "inline-block" : "none";
-
-      // Oldest orders first in both collections (we change layout in archive)
-      let query = db.collection(collectionName).orderBy("createdAt", "asc");
-
-      unsubscribeListener = query.onSnapshot(renderOrders, err => {
-        console.error("listen error", err);
-      });
-    }
-
-    function setupStaffManagement() {
-      const staffSection = document.getElementById("staffSection");
-      const createForm = document.getElementById("createStaffAccountForm");
-      const addForm = document.getElementById("addStaffForm");
-      const staffList = document.getElementById("staffList");
-
-      // Cloud Function: create Auth user + staff doc
-      const createStaffUserFn = functions.httpsCallable("createStaffUser");
-
-      createForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const email = document.getElementById("createStaffEmail").value.trim().toLowerCase();
-        const password = document.getElementById("createStaffPassword").value;
-        const role = document.getElementById("createStaffRole").value;
-
-        if (!email || !password) {
-          alert("Email and password are required.");
-          return;
-        }
-
-        try {
-          await createStaffUserFn({ email, password, role });
-          document.getElementById("createStaffEmail").value = "";
-          document.getElementById("createStaffPassword").value = "";
-          alert("Staff account created successfully.");
-        } catch (err) {
-          console.error(err);
-          alert("Failed to create staff user: " + (err.message || err));
-        }
-      });
-
-      // Change role only (or add staff doc if already created manually)
-      addForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const email = document.getElementById("staffEmail").value.trim().toLowerCase();
-        const role = document.getElementById("staffRole").value;
-        if (!email) return;
-
-        try {
-          await db.collection("staff").doc(email).set({ email, role });
-          document.getElementById("staffEmail").value = "";
-          alert("Staff role added/updated.");
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-
-      // Live list of staff
-      db.collection("staff").orderBy("email").onSnapshot(snap => {
-        staffList.innerHTML = "";
+        (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/view.html b/view.html
+index 863e7c43c03b1a3219eddd26a6b0e7aa24a3434c..f0fc74db6ae11dda192b2912d17638bb9d04b471 100644
+--- a/view.html
++++ b/view.html
+@@ -137,66 +137,161 @@
+         <button type="submit">Create staff account</button>
+       </form>
+ 
+       <hr />
+ 
+       <h3>Staff roles (change role only)</h3>
+       <form id="addStaffForm">
+         <label>Staff email
+           <input id="staffEmail" type="email" required />
+         </label>
+         <label>Role
+           <select id="staffRole">
+             <option value="viewer">Viewer (bar staff – see orders)</option>
+             <option value="order">Order taker (front – enters orders)</option>
+           </select>
+         </label>
+         <button type="submit">Add / update staff role</button>
+       </form>
+ 
+       <h4>Current staff</h4>
+       <ul id="staffList"></ul>
+     </section>
+   </main>
+ 
+   <!-- Firebase -->
++  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.9.0/sql-wasm.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+   <script src="firebase.js"></script>
+ 
+   <script>
+     const OWNER_EMAILS = [
+       "b.sargsyan@student.uwcdilijan.am",
+       "e.mosoian@student.uwcdilijan.am"
+     ];
+ 
+     const auth = firebase.auth();
+     const db = firebase.firestore();
+     const functions = firebase.functions();
+ 
++    // Lightweight SQLite store (sql.js) to keep a local record of staff accounts
++    const STAFF_SQL_STORAGE_KEY = "staffSqlDb";
++    const staffDbPromise = (async () => {
++      if (typeof initSqlJs === "undefined") {
++        console.warn("sql.js not loaded; local staff archive disabled");
++        return null;
++      }
++
++      const SQL = await initSqlJs({
++        locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.9.0/${file}`
++      });
++
++      const db = loadDbFromStorage(SQL);
++      db.run(
++        "CREATE TABLE IF NOT EXISTS staff_accounts (" +
++          "email TEXT PRIMARY KEY, " +
++          "password TEXT, " +
++          "role TEXT, " +
++          "created_at TEXT" +
++        ")"
++      );
++
++      return db;
++    })();
++
++    function base64ToUint8Array(b64) {
++      const binary = atob(b64);
++      const bytes = new Uint8Array(binary.length);
++      for (let i = 0; i < binary.length; i++) {
++        bytes[i] = binary.charCodeAt(i);
++      }
++      return bytes;
++    }
++
++    function dbToBase64(db) {
++      const data = db.export();
++      let binary = "";
++      data.forEach((byte) => {
++        binary += String.fromCharCode(byte);
++      });
++      return btoa(binary);
++    }
++
++    function loadDbFromStorage(SQL) {
++      const saved = localStorage.getItem(STAFF_SQL_STORAGE_KEY);
++      if (!saved) return new SQL.Database();
++      try {
++        return new SQL.Database(base64ToUint8Array(saved));
++      } catch (err) {
++        console.warn("Failed to restore staff SQL DB, creating new one", err);
++        return new SQL.Database();
++      }
++    }
++
++    async function persistStaffDb() {
++      try {
++        const dbInstance = await staffDbPromise;
++        if (!dbInstance) return;
++        const b64 = dbToBase64(dbInstance);
++        localStorage.setItem(STAFF_SQL_STORAGE_KEY, b64);
++      } catch (err) {
++        console.warn("Unable to persist staff SQL DB", err);
++      }
++    }
++
++    async function saveStaffAccountToSql(email, password, role) {
++      const dbInstance = await staffDbPromise;
++      if (!dbInstance) return;
++
++      dbInstance.run(
++        "INSERT OR REPLACE INTO staff_accounts (email, password, role, created_at) VALUES (?, ?, ?, datetime('now'))",
++        [email, password, role]
++      );
++      await persistStaffDb();
++    }
++
++    async function upsertStaffRoleInSql(email, role) {
++      const dbInstance = await staffDbPromise;
++      if (!dbInstance) return;
++
++      let existingPassword = "";
++      const stmt = dbInstance.prepare("SELECT password FROM staff_accounts WHERE email = ?", [email]);
++      if (stmt.step()) {
++        existingPassword = stmt.get()[0] || "";
++      }
++      stmt.free();
++
++      dbInstance.run(
++        "INSERT OR REPLACE INTO staff_accounts (email, password, role, created_at) VALUES (?, ?, ?, datetime('now'))",
++        [email, existingPassword, role]
++      );
++      await persistStaffDb();
++    }
++
+     let currentView = "active";
+     let unsubscribeListener = null;
+     let isOwner = false;
+ 
+     // More understandable labels for new staff
+     const BUBBLE_LABELS = {
+       mango: "Mango bubbles (yellow)",
+       peach: "Peach bubbles (orange)",
+       passion_fruit: "Passion fruit bubbles",
+       lychee: "Lychee bubbles",
+       pomegranate: "Pomegranate bubbles (red)"
+     };
+ 
+     const SYRUP_LABELS = {
+       mango: "Mango syrup",
+       peach: "Peach syrup",
+       passion_fruit: "Passion fruit syrup",
+       strawberry: "Strawberry syrup",
+       pomegranate: "Pomegranate syrup"
+     };
+ 
+     const TEA_LABELS = {
+       green: "Green tea",
+       black: "Black tea"
+     };
+@@ -405,97 +500,104 @@
+     async function deleteArchiveOrder(id) {
+       if (!isOwner) {
+         alert("Only owners can delete archived orders.");
+         return;
+       }
+       if (!confirm("Delete this archived order?")) return;
+ 
+       try {
+         await db.collection("archive").doc(id).delete();
+       } catch (err) {
+         alert("Failed to delete order: " + err.message);
+       }
+     }
+ 
+     function listenToCollection() {
+       if (unsubscribeListener) unsubscribeListener();
+       const collectionName = currentView === "active" ? "orders" : "archive";
+ 
+       document.getElementById("listTitle").textContent =
+         currentView === "active" ? "Live orders" : "Archived orders";
+ 
+       document.getElementById("deleteAllBtn").style.display =
+         currentView === "archive" && isOwner ? "inline-block" : "none";
+ 
+       // Oldest orders first in both collections (we change layout in archive)
+-      let query = db.collection(collectionName).orderBy("createdAt", "asc");
++      let query = db.collection(collectionName);
++      if (collectionName === "archive") {
++        query = query.orderBy("finishedAt", "asc");
++      } else {
++        query = query.orderBy("createdAt", "asc");
++      }
+ 
+       unsubscribeListener = query.onSnapshot(renderOrders, err => {
+         console.error("listen error", err);
+       });
+     }
+ 
+     function setupStaffManagement() {
+       const staffSection = document.getElementById("staffSection");
+       const createForm = document.getElementById("createStaffAccountForm");
+       const addForm = document.getElementById("addStaffForm");
+       const staffList = document.getElementById("staffList");
+ 
+       // Cloud Function: create Auth user + staff doc
+       const createStaffUserFn = functions.httpsCallable("createStaffUser");
+ 
+       createForm.addEventListener("submit", async (e) => {
+         e.preventDefault();
+         const email = document.getElementById("createStaffEmail").value.trim().toLowerCase();
+         const password = document.getElementById("createStaffPassword").value;
+         const role = document.getElementById("createStaffRole").value;
+ 
+         if (!email || !password) {
+           alert("Email and password are required.");
+           return;
+         }
+ 
+         try {
+           await createStaffUserFn({ email, password, role });
++          await saveStaffAccountToSql(email, password, role);
+           document.getElementById("createStaffEmail").value = "";
+           document.getElementById("createStaffPassword").value = "";
+           alert("Staff account created successfully.");
+         } catch (err) {
+           console.error(err);
+           alert("Failed to create staff user: " + (err.message || err));
+         }
+       });
+ 
+       // Change role only (or add staff doc if already created manually)
+       addForm.addEventListener("submit", async (e) => {
+         e.preventDefault();
+         const email = document.getElementById("staffEmail").value.trim().toLowerCase();
+         const role = document.getElementById("staffRole").value;
+         if (!email) return;
+ 
+         try {
+           await db.collection("staff").doc(email).set({ email, role });
++          await upsertStaffRoleInSql(email, role);
+           document.getElementById("staffEmail").value = "";
+           alert("Staff role added/updated.");
+         } catch (err) {
+           alert(err.message);
+         }
+       });
+ 
+       // Live list of staff
+       db.collection("staff").orderBy("email").onSnapshot(snap => {
+         staffList.innerHTML = "";
+         snap.forEach(doc => {
+           const data = doc.data();
+           const email = data.email || doc.id;
+           const role = data.role || "viewer";
+ 
+           const li = document.createElement("li");
+           li.textContent = `${email} — ${role}`;
+ 
+           // Do not remove owners from here
+           if (!OWNER_EMAILS.includes(email)) {
+             const delBtn = document.createElement("button");
+             delBtn.textContent = "Remove";
+             delBtn.className = "done-btn";
+             delBtn.style.background = "#7f8c8d";
+             delBtn.onclick = () => deleteStaff(email);
+ 
+EOF
+)
         snap.forEach(doc => {
           const data = doc.data();
           const email = data.email || doc.id;
