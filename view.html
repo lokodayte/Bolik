@@ -65,8 +65,6 @@
       <h3>Today's totals</h3>
       <p>Cash: <strong id="cashTotal">0</strong> AMD</p>
       <p>Card: <strong id="cardTotal">0</strong> AMD</p>
-      <p>Total orders today: <strong id="countToday">0</strong></p>
-      <p><b>Total money made today: <span id="moneyToday">0</span> AMD</b></p>
     </section>
 
     <hr />
@@ -199,7 +197,7 @@
 
     auth.onAuthStateChanged(user => {
       if (!user) return window.location = "index.html";
-      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoian@student.uwcdilijan.am"];
+      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoian@student.uwcdilijan.am", "m.saad@student.uwcdilijan.am"];
       if (!allowed.includes(user.email.toLowerCase())) {
         auth.signOut();
         return window.location = "index.html";
