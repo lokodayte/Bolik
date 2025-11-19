@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bubble Tea — Live Orders (Elina)</title>
+  <title>Bubble Tea — Live Orders</title>
   <link rel="stylesheet" href="style.css" />
   <style>
     .done-btn {
@@ -14,6 +14,8 @@
       padding: 6px 10px;
       cursor: pointer;
       margin-top: 6px;
+      margin-left: 4px;
+      font-size: 13px;
     }
     .tabs {
       display: flex;
@@ -44,6 +46,14 @@
       margin-top: 16px;
       color: #1f7aef;
     }
+    #staffSection ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    #staffSection li {
+      padding: 6px 0;
+      border-bottom: 1px solid #eee;
+    }
   </style>
 </head>
 <body>
@@ -61,10 +71,12 @@
       <button id="archiveTab">Archive</button>
     </div>
 
-    <section id="totalsSection">
-      <h3>Today's totals</h3>
+    <!-- Owners-only money totals -->
+    <section id="totalsSection" style="display:none;">
+      <h3>Today's totals (owners only)</h3>
       <p>Cash: <strong id="cashTotal">0</strong> AMD</p>
       <p>Card: <strong id="cardTotal">0</strong> AMD</p>
+      <p>Total: <strong id="totalToday">0</strong> AMD</p>
     </section>
 
     <hr />
@@ -74,157 +86,377 @@
       <button id="deleteAllBtn" class="delete-all" style="display:none;">Delete All</button>
       <ul id="ordersList"></ul>
     </section>
+
+    <!-- Owners-only: manage staff roles -->
+    <section id="staffSection" style="display:none; margin-top:20px;">
+      <h3>Staff management (owners only)</h3>
+
+      <form id="addStaffForm">
+        <label>Staff email
+          <input id="staffEmail" type="email" required />
+        </label>
+
+        <label>Role
+          <select id="staffRole">
+            <option value="viewer">Viewer (bar staff – see orders)</option>
+            <option value="order">Order taker (front – enters orders)</option>
+          </select>
+        </label>
+
+        <button type="submit">Add / update staff member</button>
+      </form>
+
+      <h4>Current staff</h4>
+      <ul id="staffList"></ul>
+    </section>
   </main>
 
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="firebase.js"></script>
 
   <script>
+    const OWNER_EMAILS = [
+      "b.sargsyan@student.uwcdilijan.am",
+      "e.mosoian@student.uwcdilijan.am"
+    ];
+
     const auth = firebase.auth();
     const db = firebase.firestore();
 
     let currentView = "active";
     let unsubscribeListener = null;
-    let totalsCache = { cash: 0, card: 0, count: 0 };
+    let isOwner = false;
+
+    // More understandable labels for new staff
+    const BUBBLE_LABELS = {
+      mango: "Mango bubbles (yellow)",
+      peach: "Peach bubbles (orange)",
+      passion_fruit: "Passion fruit bubbles",
+      lychee: "Lychee bubbles",
+      pomegranate: "Pomegranate bubbles (red)"
+    };
+
+    const SYRUP_LABELS = {
+      mango: "Mango syrup",
+      peach: "Peach syrup",
+      passion_fruit: "Passion fruit syrup",
+      strawberry: "Strawberry syrup",
+      pomegranate: "Pomegranate syrup"
+    };
+
+    const TEA_LABELS = {
+      green: "Green tea",
+      black: "Black tea"
+    };
+
+    function formatOrderDetails(o) {
+      const bubbles = BUBBLE_LABELS[o.bubbles] || o.bubbles;
+      const syrup = SYRUP_LABELS[o.syrup] || o.syrup;
+      const tea   = TEA_LABELS[o.tea] || o.tea;
+
+      const payment =
+        o.payment === "cash" ? "Cash" :
+        o.payment === "card" ? "Card" :
+        o.payment;
+
+      return `
+        Bubbles: ${bubbles} |
+        Syrup: ${syrup} |
+        Tea: ${tea} |
+        Payment: ${payment} |
+        Price: ${o.price || 0} AMD
+      `;
+    }
 
     function renderOrders(snapshot) {
-      const list = document.getElementById('ordersList');
-      list.innerHTML = '';
+      const list = document.getElementById("ordersList");
+      list.innerHTML = "";
 
-      // If active tab: show totals
       if (currentView === "active") {
-        let cashTotal = totalsCache.cash;
-        let cardTotal = totalsCache.card;
-        let countToday = totalsCache.count;
+        // Recompute totals on every snapshot
+        let cashTotal = 0;
+        let cardTotal = 0;
+
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
         snapshot.forEach(doc => {
           const o = doc.data();
-          const li = document.createElement('li');
+          const li = document.createElement("li");
           const ts = o.createdAt ? o.createdAt.toDate() : new Date();
           const dateStr = ts.toLocaleString();
 
-          li.innerHTML = `<strong>${o.customer}</strong> — ${o.bubbles}, ${o.syrup}, ${o.tea} — ${o.payment} — ${o.price} AMD<br/>
-                          <small>By ${o.createdBy} at ${dateStr}</small>`;
-          const btn = document.createElement('button');
+          li.innerHTML = `
+            <strong>${o.customer}</strong><br/>
+            ${formatOrderDetails(o)}<br/>
+            <small>By ${o.createdBy} at ${dateStr}</small>
+          `;
+
+          const btn = document.createElement("button");
           btn.textContent = "Done";
           btn.className = "done-btn";
           btn.onclick = () => markAsDone(doc.id, o);
           li.appendChild(btn);
+
           list.appendChild(li);
 
-          if (ts >= start && ts < end) {
-            countToday++;
-            if (o.payment === 'cash') cashTotal += Number(o.price || 0);
-            else if (o.payment === 'card') cardTotal += Number(o.price || 0);
+          // Only owners need totals, but we can compute them here
+          if (isOwner && ts >= start && ts < end) {
+            const price = Number(o.price || 0);
+            if (o.payment === "cash") cashTotal += price;
+            else if (o.payment === "card") cardTotal += price;
           }
         });
 
-        totalsCache = { cash: cashTotal, card: cardTotal, count: countToday };
-        document.getElementById('cashTotal').textContent = cashTotal;
-        document.getElementById('cardTotal').textContent = cardTotal;
-        document.getElementById('countToday').textContent = countToday;
-        document.getElementById('moneyToday').textContent = cashTotal + cardTotal;
+        if (isOwner) {
+          document.getElementById("cashTotal").textContent = cashTotal;
+          document.getElementById("cardTotal").textContent = cardTotal;
+          document.getElementById("totalToday").textContent = cashTotal + cardTotal;
+        }
       }
 
-      // If archive tab: group by date
       if (currentView === "archive") {
         const groups = {};
+
         snapshot.forEach(doc => {
           const o = doc.data();
-          const ts = o.finishedAt ? o.finishedAt.toDate() : new Date();
-          const dateLabel = ts.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+          const ts = o.finishedAt
+            ? o.finishedAt.toDate()
+            : (o.createdAt ? o.createdAt.toDate() : new Date());
+
+          const dateLabel = ts.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+          });
+
           if (!groups[dateLabel]) groups[dateLabel] = [];
-          groups[dateLabel].push({ ...o, ts });
+          groups[dateLabel].push({ id: doc.id, data: o, ts });
         });
 
-        for (const date in groups) {
-          const h4 = document.createElement('h4');
-          h4.className = "date-group";
-          h4.textContent = date;
-          list.appendChild(h4);
-          groups[date].forEach(o => {
-            const li = document.createElement('li');
-            li.innerHTML = `<strong>${o.customer}</strong> — ${o.bubbles}, ${o.syrup}, ${o.tea} — ${o.payment} — ${o.price} AMD<br/>
-                            <small>By ${o.createdBy} at ${o.ts.toLocaleString()}</small>`;
-            list.appendChild(li);
+        // Grouped by date, oldest day first
+        Object.keys(groups)
+          .sort((a, b) => new Date(a) - new Date(b))
+          .forEach(date => {
+            const h4 = document.createElement("h4");
+            h4.className = "date-group";
+            h4.textContent = date;
+            list.appendChild(h4);
+
+            // Within each day, keep Firestore order (createdAt asc)
+            groups[date].forEach(entry => {
+              const o = entry.data;
+              const li = document.createElement("li");
+              li.innerHTML = `
+                <strong>${o.customer}</strong><br/>
+                ${formatOrderDetails(o)}<br/>
+                <small>By ${o.createdBy} at ${entry.ts.toLocaleString()}</small>
+              `;
+
+              // Per-order delete in archive (owners only)
+              if (isOwner) {
+                const delBtn = document.createElement("button");
+                delBtn.textContent = "Delete";
+                delBtn.className = "done-btn";
+                delBtn.style.background = "#7f8c8d";
+                delBtn.onclick = () => deleteArchiveOrder(entry.id);
+                li.appendChild(delBtn);
+              }
+
+              list.appendChild(li);
+            });
           });
-        }
       }
     }
 
     async function markAsDone(orderId, orderData) {
       try {
-        await db.collection('archive').add({
+        await db.collection("archive").add({
           ...orderData,
           finishedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        await db.collection('orders').doc(orderId).delete();
+        await db.collection("orders").doc(orderId).delete();
       } catch (err) {
         console.error("Error archiving order:", err);
-        alert("⚠️ Could not move order to archive.");
+        alert("Could not move order to archive.");
       }
     }
 
     async function deleteAllArchive() {
+      if (!isOwner) {
+        alert("Only owners can delete all archived orders.");
+        return;
+      }
       if (!confirm("Are you sure you want to delete ALL archived orders?")) return;
+
       try {
-        const snap = await db.collection('archive').get();
+        const snap = await db.collection("archive").get();
         const batch = db.batch();
         snap.forEach(doc => batch.delete(doc.ref));
         await batch.commit();
-        alert("✅ All archived orders deleted!");
+        alert("All archived orders deleted.");
       } catch (err) {
-        alert("⚠️ Failed to delete: " + err.message);
+        alert("Failed to delete: " + err.message);
+      }
+    }
+
+    async function deleteArchiveOrder(id) {
+      if (!isOwner) {
+        alert("Only owners can delete archived orders.");
+        return;
+      }
+      if (!confirm("Delete this archived order?")) return;
+
+      try {
+        await db.collection("archive").doc(id).delete();
+      } catch (err) {
+        alert("Failed to delete order: " + err.message);
       }
     }
 
     function listenToCollection() {
       if (unsubscribeListener) unsubscribeListener();
       const collectionName = currentView === "active" ? "orders" : "archive";
-      document.getElementById('listTitle').textContent =
+
+      document.getElementById("listTitle").textContent =
         currentView === "active" ? "Live orders" : "Archived orders";
-      document.getElementById('deleteAllBtn').style.display =
-        currentView === "archive" ? "inline-block" : "none";
-      unsubscribeListener = db.collection(collectionName)
-        .orderBy('createdAt', 'desc')
-        .onSnapshot(renderOrders, err => console.error('listen error', err));
+
+      document.getElementById("deleteAllBtn").style.display =
+        currentView === "archive" && isOwner ? "inline-block" : "none";
+
+      // Oldest orders first so they are handled first
+      let query = db.collection(collectionName).orderBy("createdAt", "asc");
+
+      unsubscribeListener = query.onSnapshot(renderOrders, err => {
+        console.error("listen error", err);
+      });
     }
 
-    auth.onAuthStateChanged(user => {
-      if (!user) return window.location = "index.html";
-      const allowed = ["b.sargsyan@student.uwcdilijan.am","e.mosoian@student.uwcdilijan.am", "m.saad@student.uwcdilijan.am", "u.kubanychbekova@student.uwcdilijan.am"];
-      if (!allowed.includes(user.email.toLowerCase())) {
-        auth.signOut();
-        return window.location = "index.html";
+    function setupStaffManagement() {
+      const staffSection = document.getElementById("staffSection");
+      staffSection.style.display = "block";
+
+      const form = document.getElementById("addStaffForm");
+      const emailInput = document.getElementById("staffEmail");
+      const roleSelect = document.getElementById("staffRole");
+      const list = document.getElementById("staffList");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const email = emailInput.value.trim().toLowerCase();
+        const role = roleSelect.value;
+        if (!email) return;
+
+        try {
+          await db.collection("staff").doc(email).set({ email, role });
+          emailInput.value = "";
+          alert("Staff member added/updated.");
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+
+      db.collection("staff").orderBy("email").onSnapshot(snap => {
+        list.innerHTML = "";
+        snap.forEach(doc => {
+          const data = doc.data();
+          const email = data.email || doc.id;
+          const role = data.role || "viewer";
+
+          const li = document.createElement("li");
+          li.textContent = `${email} — ${role}`;
+
+          // Do not remove owners from here
+          if (!OWNER_EMAILS.includes(email)) {
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "Remove";
+            delBtn.className = "done-btn";
+            delBtn.style.background = "#7f8c8d";
+            delBtn.onclick = () => deleteStaff(email);
+            li.appendChild(delBtn);
+          }
+
+          list.appendChild(li);
+        });
+      });
+    }
+
+    async function deleteStaff(email) {
+      if (!confirm(`Remove ${email} from staff?`)) return;
+      try {
+        await db.collection("staff").doc(email).delete();
+      } catch (err) {
+        alert(err.message);
       }
-      document.getElementById('who').textContent = user.email;
+    }
+
+    auth.onAuthStateChanged(async user => {
+      if (!user) {
+        window.location = "index.html";
+        return;
+      }
+
+      const email = user.email.toLowerCase();
+      document.getElementById("who").textContent = email;
+      isOwner = OWNER_EMAILS.includes(email);
+
+      if (!isOwner) {
+        try {
+          const doc = await db.collection("staff").doc(email).get();
+          if (!doc.exists) {
+            await auth.signOut();
+            window.location = "index.html";
+            return;
+          }
+          const role = doc.data().role;
+
+          // Only viewer role is allowed here
+          if (role !== "viewer") {
+            window.location = "order.html";
+            return;
+          }
+        } catch (err) {
+          console.error(err);
+          await auth.signOut();
+          window.location = "index.html";
+          return;
+        }
+      } else {
+        // Owner: show totals and staff management
+        document.getElementById("totalsSection").style.display = "block";
+        setupStaffManagement();
+      }
+
       listenToCollection();
     });
 
-    document.getElementById('logoutBtn').addEventListener('click', ()=> auth.signOut().then(()=>window.location='index.html'));
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      auth.signOut().then(() => window.location = "index.html");
+    });
 
-    document.getElementById('activeTab').addEventListener('click', () => {
+    document.getElementById("activeTab").addEventListener("click", () => {
       currentView = "active";
-      document.getElementById('activeTab').classList.add("active");
-      document.getElementById('archiveTab').classList.remove("active");
-      document.getElementById('totalsSection').style.display = "block";
+      document.getElementById("activeTab").classList.add("active");
+      document.getElementById("archiveTab").classList.remove("active");
+      if (isOwner) {
+        document.getElementById("totalsSection").style.display = "block";
+      }
       listenToCollection();
     });
 
-    document.getElementById('archiveTab').addEventListener('click', () => {
+    document.getElementById("archiveTab").addEventListener("click", () => {
       currentView = "archive";
-      document.getElementById('archiveTab').classList.add("active");
-      document.getElementById('activeTab').classList.remove("active");
-      document.getElementById('totalsSection').style.display = "none";
+      document.getElementById("archiveTab").classList.add("active");
+      document.getElementById("activeTab").classList.remove("active");
+      document.getElementById("totalsSection").style.display = "none";
       listenToCollection();
     });
 
-    document.getElementById('deleteAllBtn').addEventListener('click', deleteAllArchive);
+    document.getElementById("deleteAllBtn").addEventListener("click", deleteAllArchive);
   </script>
 </body>
 </html>
