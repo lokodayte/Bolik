@@ -13,10 +13,11 @@
       color: white;
       padding: 6px 10px;
       cursor: pointer;
-      margin-top: 6px;
-      margin-left: 4px;
+      margin-top: 8px;
       font-size: 13px;
+      align-self: flex-end;
     }
+
     .tabs {
       display: flex;
       gap: 10px;
@@ -33,6 +34,7 @@
       background: #1f7aef;
       color: #fff;
     }
+
     .delete-all {
       background: #c0392b;
       border: none;
@@ -42,6 +44,50 @@
       cursor: pointer;
       margin-bottom: 8px;
     }
+
+    /* Order cards */
+    .order-item {
+      list-style: none;
+      margin: 8px 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #f8f9fb;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .customer-name {
+      font-size: 16px;
+    }
+    .order-meta {
+      font-size: 11px;
+      color: #777;
+      white-space: nowrap;
+    }
+    .order-body {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      row-gap: 2px;
+      column-gap: 8px;
+      font-size: 13px;
+    }
+    .order-row-label {
+      font-weight: 600;
+      color: #333;
+      text-align: right;
+    }
+    .order-row-value {
+      color: #444;
+    }
+
+    /* Archive dropdown (accordion) style */
     .archive-group {
       list-style: none;
       margin: 8px 0;
@@ -73,8 +119,9 @@
     .archive-orders {
       list-style: none;
       margin: 0;
-      padding: 6px 10px 8px 20px;
+      padding: 6px 10px 8px 10px;
     }
+
     #staffSection ul {
       list-style: none;
       padding-left: 0;
@@ -156,13 +203,13 @@
     let unsubscribeListener = null;
     let isOwner = false;
 
-    // Labels for staff to understand drinks
+    // Cleaner labels (no colors in text)
     const BUBBLE_LABELS = {
-      mango: "Mango bubbles (yellow)",
-      peach: "Peach bubbles (orange)",
+      mango: "Mango bubbles",
+      peach: "Peach bubbles",
       passion_fruit: "Passion fruit bubbles",
       lychee: "Lychee bubbles",
-      pomegranate: "Pomegranate bubbles (red)"
+      pomegranate: "Pomegranate bubbles"
     };
 
     const SYRUP_LABELS = {
@@ -178,7 +225,7 @@
       black: "Black tea"
     };
 
-    function formatOrderDetails(o) {
+    function buildOrderCardHtml(o, ts) {
       const bubbles = BUBBLE_LABELS[o.bubbles] || o.bubbles;
       const syrup = SYRUP_LABELS[o.syrup] || o.syrup;
       const tea   = TEA_LABELS[o.tea] || o.tea;
@@ -186,14 +233,33 @@
       const payment =
         o.payment === "cash" ? "Cash" :
         o.payment === "card" ? "Card" :
-        o.payment;
+        (o.payment || "");
+
+      const lines = [
+        { label: "Bubbles", value: bubbles },
+        { label: "Syrup",   value: syrup },
+        { label: "Tea",     value: tea }
+      ];
+
+      // Only owners see payment + price
+      if (isOwner) {
+        lines.push({ label: "Payment", value: payment });
+        lines.push({ label: "Price",   value: (o.price || 0) + " AMD" });
+      }
+
+      const bodyHtml = lines.map(l => `
+        <div class="order-row-label">${l.label}</div>
+        <div class="order-row-value">${l.value}</div>
+      `).join("");
 
       return `
-        Bubbles: ${bubbles} |
-        Syrup: ${syrup} |
-        Tea: ${tea} |
-        Payment: ${payment} |
-        Price: ${o.price || 0} AMD
+        <div class="order-header">
+          <strong class="customer-name">${o.customer}</strong>
+          <span class="order-meta">By ${o.createdBy} at ${ts.toLocaleString()}</span>
+        </div>
+        <div class="order-body">
+          ${bodyHtml}
+        </div>
       `;
     }
 
@@ -211,22 +277,18 @@
 
         snapshot.forEach(doc => {
           const o = doc.data();
-          const li = document.createElement("li");
           const ts = o.createdAt ? o.createdAt.toDate() : new Date();
-          const dateStr = ts.toLocaleString();
 
-          li.innerHTML = `
-            <strong>${o.customer}</strong><br/>
-            ${formatOrderDetails(o)}<br/>
-            <small>By ${o.createdBy} at ${dateStr}</small>
-          `;
+          const li = document.createElement("li");
+          li.className = "order-item";
+          li.innerHTML = buildOrderCardHtml(o, ts);
 
           const btn = document.createElement("button");
           btn.textContent = "Done";
           btn.className = "done-btn";
           btn.onclick = () => markAsDone(doc.id, o);
-          li.appendChild(btn);
 
+          li.appendChild(btn);
           list.appendChild(li);
 
           if (isOwner && ts >= start && ts < end) {
@@ -262,7 +324,6 @@
 
         const todayKey = new Date().toISOString().slice(0, 10);
 
-        // newest dates first
         const dateKeys = Object.keys(groups).sort((a, b) => new Date(b) - new Date(a));
 
         dateKeys.forEach(key => {
@@ -313,11 +374,8 @@
             .forEach(entry => {
               const o = entry.data;
               const orderLi = document.createElement("li");
-              orderLi.innerHTML = `
-                <strong>${o.customer}</strong><br/>
-                ${formatOrderDetails(o)}<br/>
-                <small>By ${o.createdBy} at ${entry.ts.toLocaleString()}</small>
-              `;
+              orderLi.className = "order-item";
+              orderLi.innerHTML = buildOrderCardHtml(o, entry.ts);
 
               if (isOwner) {
                 const delBtn = document.createElement("button");
