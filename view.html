@@ -42,17 +42,39 @@
       cursor: pointer;
       margin-bottom: 8px;
     }
-    h4.date-group {
-      margin-top: 16px;
-      color: #1f7aef;
-    }
-    #staffSection ul {
+    /* Archive dropdown (accordion) style */
+    .archive-group {
       list-style: none;
-      padding-left: 0;
+      margin: 8px 0;
+      border-radius: 8px;
+      border: 1px solid #eee;
+      padding: 0;
+      overflow: hidden;
+      background: #fafafa;
     }
-    #staffSection li {
-      padding: 6px 0;
-      border-bottom: 1px solid #eee;
+    .archive-header {
+      width: 100%;
+      text-align: left;
+      background: #f2f2f2;
+      border: none;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .archive-header span.label {
+      flex: 1;
+    }
+    .archive-header span.chevron {
+      margin-left: 8px;
+      font-size: 12px;
+    }
+    .archive-orders {
+      list-style: none;
+      margin: 0;
+      padding: 6px 10px 8px 20px;
     }
   </style>
 </head>
@@ -71,7 +93,7 @@
       <button id="archiveTab">Archive</button>
     </div>
 
-    <!-- Owners-only money totals -->
+    <!-- Owners-only money totals for TODAY (active orders view) -->
     <section id="totalsSection" style="display:none;">
       <h3>Today's totals (owners only)</h3>
       <p>Cash: <strong id="cashTotal">0</strong> AMD</p>
@@ -176,7 +198,7 @@
       list.innerHTML = "";
 
       if (currentView === "active") {
-        // Recompute totals on every snapshot
+        // ACTIVE tab: show current orders (oldest first) + today's totals for owners
         let cashTotal = 0;
         let cardTotal = 0;
 
@@ -204,7 +226,6 @@
 
           list.appendChild(li);
 
-          // Only owners need totals, but we can compute them here
           if (isOwner && ts >= start && ts < end) {
             const price = Number(o.price || 0);
             if (o.payment === "cash") cashTotal += price;
@@ -220,6 +241,7 @@
       }
 
       if (currentView === "archive") {
+        // ARCHIVE tab: accordion per date
         const groups = {};
 
         snapshot.forEach(doc => {
@@ -228,48 +250,97 @@
             ? o.finishedAt.toDate()
             : (o.createdAt ? o.createdAt.toDate() : new Date());
 
-          const dateLabel = ts.toLocaleDateString("en-US", {
+          const key = ts.toISOString().slice(0, 10); // YYYY-MM-DD
+          if (!groups[key]) {
+            groups[key] = { date: ts, orders: [] };
+          }
+          groups[key].orders.push({ id: doc.id, data: o, ts });
+        });
+
+        const todayKey = new Date().toISOString().slice(0, 10);
+
+        // Sort date keys NEWEST -> OLDEST
+        const dateKeys = Object.keys(groups).sort((a, b) => new Date(b) - new Date(a));
+
+        dateKeys.forEach(key => {
+          const group = groups[key];
+          const date = group.date;
+          const dateLabel = date.toLocaleDateString("en-US", {
             year: "numeric",
             month: "long",
             day: "numeric"
           });
 
-          if (!groups[dateLabel]) groups[dateLabel] = [];
-          groups[dateLabel].push({ id: doc.id, data: o, ts });
-        });
+          // Calculate total income for that day
+          let dayTotal = 0;
+          group.orders.forEach(entry => {
+            dayTotal += Number(entry.data.price || 0);
+          });
 
-        // Grouped by date, oldest day first
-        Object.keys(groups)
-          .sort((a, b) => new Date(a) - new Date(b))
-          .forEach(date => {
-            const h4 = document.createElement("h4");
-            h4.className = "date-group";
-            h4.textContent = date;
-            list.appendChild(h4);
+          const isTodayGroup = key === todayKey;
 
-            // Within each day, keep Firestore order (createdAt asc)
-            groups[date].forEach(entry => {
+          // Outer li = one "dropdown"
+          const groupLi = document.createElement("li");
+          groupLi.className = "archive-group";
+
+          const headerBtn = document.createElement("button");
+          headerBtn.type = "button";
+          headerBtn.className = "archive-header";
+
+          const labelSpan = document.createElement("span");
+          labelSpan.className = "label";
+
+          if (isOwner) {
+            labelSpan.textContent = `${dateLabel} — Total: ${dayTotal} AMD`;
+          } else {
+            labelSpan.textContent = dateLabel;
+          }
+
+          const chevronSpan = document.createElement("span");
+          chevronSpan.className = "chevron";
+          chevronSpan.textContent = isTodayGroup ? "▲" : "▼";
+
+          headerBtn.appendChild(labelSpan);
+          headerBtn.appendChild(chevronSpan);
+
+          const innerUl = document.createElement("ul");
+          innerUl.className = "archive-orders";
+          innerUl.style.display = isTodayGroup ? "block" : "none";
+
+          group.orders
+            // keep createdAt ascending inside each day (oldest first)
+            .sort((a, b) => a.ts - b.ts)
+            .forEach(entry => {
               const o = entry.data;
-              const li = document.createElement("li");
-              li.innerHTML = `
+              const orderLi = document.createElement("li");
+              orderLi.innerHTML = `
                 <strong>${o.customer}</strong><br/>
                 ${formatOrderDetails(o)}<br/>
                 <small>By ${o.createdBy} at ${entry.ts.toLocaleString()}</small>
               `;
 
-              // Per-order delete in archive (owners only)
               if (isOwner) {
                 const delBtn = document.createElement("button");
                 delBtn.textContent = "Delete";
                 delBtn.className = "done-btn";
                 delBtn.style.background = "#7f8c8d";
                 delBtn.onclick = () => deleteArchiveOrder(entry.id);
-                li.appendChild(delBtn);
+                orderLi.appendChild(delBtn);
               }
 
-              list.appendChild(li);
+              innerUl.appendChild(orderLi);
             });
+
+          headerBtn.addEventListener("click", () => {
+            const isHidden = innerUl.style.display === "none";
+            innerUl.style.display = isHidden ? "block" : "none";
+            chevronSpan.textContent = isHidden ? "▲" : "▼";
           });
+
+          groupLi.appendChild(headerBtn);
+          groupLi.appendChild(innerUl);
+          list.appendChild(groupLi);
+        });
       }
     }
 
@@ -328,7 +399,7 @@
       document.getElementById("deleteAllBtn").style.display =
         currentView === "archive" && isOwner ? "inline-block" : "none";
 
-      // Oldest orders first so they are handled first
+      // Oldest orders first in both collections (we change layout in archive)
       let query = db.collection(collectionName).orderBy("createdAt", "asc");
 
       unsubscribeListener = query.onSnapshot(renderOrders, err => {
