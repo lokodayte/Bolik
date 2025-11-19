@@ -22,34 +22,58 @@
     <p id="msg" class="muted"></p>
   </main>
 
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="firebase.js"></script>
+
   <script>
-    const ALLOWED = [
+    // Owners (full access)
+    const OWNER_EMAILS = [
       "b.sargsyan@student.uwcdilijan.am",
-      "e.mosoian@student.uwcdilijan.am",
-      "m.saad@student.uwcdilijan.am",
-      "u.kubanychbekova@student.uwcdilijan.am"
+      "e.mosoian@student.uwcdilijan.am"
     ];
+
     const auth = firebase.auth();
+    const db = firebase.firestore();
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = document.getElementById('email').value.trim().toLowerCase();
       const password = document.getElementById('password').value;
+      const msgEl = document.getElementById('msg');
+      msgEl.textContent = "";
+
       try {
         const cred = await auth.signInWithEmailAndPassword(email, password);
         const userEmail = cred.user.email.toLowerCase();
-        if (!ALLOWED.includes(userEmail)) {
-          await auth.signOut();
-          document.getElementById('msg').textContent = "This account is not allowed on this site.";
+
+        // Owners always allowed, go to dashboard
+        if (OWNER_EMAILS.includes(userEmail)) {
+          window.location = "view.html";
           return;
         }
-        if (userEmail === ALLOWED[0]) window.location = "order.html";
-        else window.location = "view.html";
+
+        // Everyone else must be in staff collection
+        const staffDoc = await db.collection("staff").doc(userEmail).get();
+        if (!staffDoc.exists) {
+          await auth.signOut();
+          msgEl.textContent = "This account is not allowed on this site.";
+          return;
+        }
+
+        const role = staffDoc.data().role;
+
+        if (role === "order") {
+          // Order takers -> order page
+          window.location = "order.html";
+        } else {
+          // Viewers -> dashboard
+          window.location = "view.html";
+        }
       } catch (err) {
-        document.getElementById('msg').textContent = "Sign-in failed: " + err.message;
+        msgEl.textContent = "Sign-in failed: " + err.message;
       }
     });
   </script>
