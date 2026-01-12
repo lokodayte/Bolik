@@ -6,7 +6,7 @@
 body { margin:0; padding:20px; }
 .topbar { display:flex; justify-content:space-between; align-items:center; padding:10px 0; }
 .card {
-  background:#FFCBC4; max-width:680px; margin:18px auto; padding:18px;
+  max-width:680px; margin:18px auto; padding:18px;
   border-radius:10px; box-shadow:0 6px 18px rgba(0,0,0,0.06);
 }
 label { display:block; margin:10px 0; }
