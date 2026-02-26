@@ -3,17 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bubble Tea — Order</title>
+  <title>Bubble Tea — Take Order</title>
   <link rel="stylesheet" href="style.css" />
-  <style>
-    background-color: pink;
-  </style>
 </head>
 <body>
   <header class="topbar">
-    <h2>Bubble Tea — Order</h2>
+    <h2>Bubble Tea — Take Order</h2>
     <div>
       <span id="who"></span>
+      <button id="homeBtn" type="button">Home</button>
       <button id="logoutBtn">Logout</button>
     </div>
   </header>
@@ -26,11 +24,11 @@
 
       <label>Bubbles
         <select id="bubbles">
-          <option value="mango">Mango bubbles (yellow)</option>
-          <option value="peach">Peach bubbles (orange)</option>
+          <option value="mango">Mango bubbles</option>
+          <option value="peach">Peach bubbles</option>
           <option value="passion_fruit">Passion fruit bubbles</option>
           <option value="lychee">Lychee bubbles</option>
-          <option value="pomegranate">Pomegranate bubbles (red)</option>
+          <option value="pomegranate">Pomegranate bubbles</option>
           <option value="raspberry">Raspberry bubbles</option>
           <option value="blueberry">Blueberry bubbles</option>
         </select>
@@ -43,7 +41,7 @@
           <option value="passion_fruit">Passion fruit syrup</option>
           <option value="strawberry">Strawberry syrup</option>
           <option value="pomegranate">Pomegranate syrup</option>
-          <option value="Lemon">Lemon syrup</option>
+          <option value="lemon">Lemon syrup</option>
         </select>
       </label>
 
@@ -65,8 +63,9 @@
         <input id="price" type="number" min="0" required />
       </label>
 
-      <button type="submit" id="submitBtn">Finish (submit order)</button>
+      <button type="submit" id="submitBtn">Submit Order</button>
     </form>
+
     <p id="status" class="muted"></p>
   </main>
 
@@ -85,46 +84,48 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // Check authentication and role
-    auth.onAuthStateChanged(async user => {
+    async function requireAllowedUser(user) {
       if (!user) {
         window.location = "index.html";
-        return;
+        return null;
       }
 
-      const email = user.email.toLowerCase();
-      let allowed = false;
+      const email = (user.email || "").toLowerCase();
+      document.getElementById("who").textContent = email;
 
-      if (OWNER_EMAILS.includes(email)) {
-        // Owners can also take orders if they want
-        allowed = true;
-      } else {
-        try {
-          const doc = await db.collection("staff").doc(email).get();
-          const role = doc.exists ? doc.data().role : null;
-          if (role === "order") allowed = true;
-        } catch (err) {
-          console.error(err);
-        }
-      }
+      if (OWNER_EMAILS.includes(email)) return user;
 
-      if (!allowed) {
+      const doc = await db.collection("staff").doc(email).get();
+      if (!doc.exists) {
         await auth.signOut();
         window.location = "index.html";
-        return;
+        return null;
       }
 
-      document.getElementById("who").textContent = email;
+      return user;
+    }
+
+    auth.onAuthStateChanged(async (user) => {
+      try {
+        await requireAllowedUser(user);
+      } catch (err) {
+        console.error(err);
+        await auth.signOut();
+        window.location = "index.html";
+      }
     });
 
-    // Logout
     document.getElementById("logoutBtn").addEventListener("click", () => {
       auth.signOut().then(() => window.location = "index.html");
     });
 
-    // Submit order
+    document.getElementById("homeBtn").addEventListener("click", () => {
+      window.location = "home.html";
+    });
+
     document.getElementById("orderForm").addEventListener("submit", async (e) => {
       e.preventDefault();
+
       const customer = document.getElementById("customer").value.trim();
       const bubbles = document.getElementById("bubbles").value;
       const syrup = document.getElementById("syrup").value;
@@ -149,7 +150,8 @@
           createdBy: user.email,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        document.getElementById("status").textContent = "Order submitted successfully!";
+
+        document.getElementById("status").textContent = "Order submitted!";
         document.getElementById("orderForm").reset();
       } catch (err) {
         document.getElementById("status").textContent = "Error: " + err.message;
