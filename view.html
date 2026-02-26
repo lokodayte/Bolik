@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bubble Tea — Live Orders</title>
+  <title>Bubble Tea — Orders Board</title>
   <link rel="stylesheet" href="style.css" />
   <style>
     .done-btn {
@@ -45,7 +45,6 @@
       margin-bottom: 8px;
     }
 
-    /* Order cards */
     .order-item {
       list-style: none;
       margin: 8px 0;
@@ -87,7 +86,6 @@
       color: #444;
     }
 
-    /* Archive dropdown (accordion) style */
     .archive-group {
       list-style: none;
       margin: 8px 0;
@@ -109,34 +107,24 @@
       justify-content: space-between;
       align-items: center;
     }
-    .archive-header span.label {
-      flex: 1;
-    }
-    .archive-header span.chevron {
-      margin-left: 8px;
-      font-size: 12px;
-    }
+    .archive-header span.label { flex: 1; }
+    .archive-header span.chevron { margin-left: 8px; font-size: 12px; }
     .archive-orders {
       list-style: none;
       margin: 0;
       padding: 6px 10px 8px 10px;
     }
 
-    #staffSection ul {
-      list-style: none;
-      padding-left: 0;
-    }
-    #staffSection li {
-      padding: 6px 0;
-      border-bottom: 1px solid #eee;
-    }
+    #staffSection ul { list-style: none; padding-left: 0; }
+    #staffSection li { padding: 6px 0; border-bottom: 1px solid #eee; }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <h2>Bubble Tea — Orders Dashboard</h2>
+    <h2>Bubble Tea — Orders Board</h2>
     <div>
       <span id="who"></span>
+      <button id="homeBtn" type="button">Home</button>
       <button id="logoutBtn">Logout</button>
     </div>
   </header>
@@ -147,7 +135,6 @@
       <button id="archiveTab">Archive</button>
     </div>
 
-    <!-- Owners-only money totals for TODAY (active orders view) -->
     <section id="totalsSection" style="display:none;">
       <h3>Today's totals (owners only)</h3>
       <p>Cash: <strong id="cashTotal">0</strong> AMD</p>
@@ -163,7 +150,6 @@
       <ul id="ordersList"></ul>
     </section>
 
-    <!-- Owners-only: manage staff roles -->
     <section id="staffSection" style="display:none; margin-top:20px;">
       <h3>Staff roles (owners only)</h3>
       <form id="addStaffForm">
@@ -172,11 +158,10 @@
         </label>
         <label>Role
           <select id="staffRole">
-            <option value="viewer">Viewer (bar staff – see orders)</option>
-            <option value="order">Order taker (front – enters orders)</option>
+            <option value="staff">Staff (can order + view)</option>
           </select>
         </label>
-        <button type="submit">Add / update staff role</button>
+        <button type="submit">Add / update staff</button>
       </form>
 
       <h4>Current staff</h4>
@@ -203,13 +188,14 @@
     let unsubscribeListener = null;
     let isOwner = false;
 
-    // Cleaner labels (no colors in text)
     const BUBBLE_LABELS = {
       mango: "Mango bubbles",
       peach: "Peach bubbles",
       passion_fruit: "Passion fruit bubbles",
       lychee: "Lychee bubbles",
-      pomegranate: "Pomegranate bubbles"
+      pomegranate: "Pomegranate bubbles",
+      raspberry: "Raspberry bubbles",
+      blueberry: "Blueberry bubbles"
     };
 
     const SYRUP_LABELS = {
@@ -217,7 +203,8 @@
       peach: "Peach syrup",
       passion_fruit: "Passion fruit syrup",
       strawberry: "Strawberry syrup",
-      pomegranate: "Pomegranate syrup"
+      pomegranate: "Pomegranate syrup",
+      lemon: "Lemon syrup"
     };
 
     const TEA_LABELS = {
@@ -241,7 +228,6 @@
         { label: "Tea",     value: tea }
       ];
 
-      // Only owners see payment + price
       if (isOwner) {
         lines.push({ label: "Payment", value: payment });
         lines.push({ label: "Price",   value: (o.price || 0) + " AMD" });
@@ -307,38 +293,28 @@
 
       if (currentView === "archive") {
         const groups = {};
-
         snapshot.forEach(doc => {
           const o = doc.data();
-          const ts = o.finishedAt
-            ? o.finishedAt.toDate()
+          const ts = o.finishedAt ? o.finishedAt.toDate()
             : (o.createdAt ? o.createdAt.toDate() : new Date());
 
-          const key = ts.toISOString().slice(0, 10); // YYYY-MM-DD
+          const key = ts.toISOString().slice(0, 10);
 
-          if (!groups[key]) {
-            groups[key] = { date: ts, orders: [] };
-          }
+          if (!groups[key]) groups[key] = { date: ts, orders: [] };
           groups[key].orders.push({ id: doc.id, data: o, ts });
         });
 
         const todayKey = new Date().toISOString().slice(0, 10);
-
         const dateKeys = Object.keys(groups).sort((a, b) => new Date(b) - new Date(a));
 
         dateKeys.forEach(key => {
           const group = groups[key];
-          const date = group.date;
-          const dateLabel = date.toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric"
+          const dateLabel = group.date.toLocaleDateString("en-US", {
+            year: "numeric", month: "long", day: "numeric"
           });
 
           let dayTotal = 0;
-          group.orders.forEach(entry => {
-            dayTotal += Number(entry.data.price || 0);
-          });
+          group.orders.forEach(entry => dayTotal += Number(entry.data.price || 0));
 
           const isTodayGroup = key === todayKey;
 
@@ -351,12 +327,7 @@
 
           const labelSpan = document.createElement("span");
           labelSpan.className = "label";
-
-          if (isOwner) {
-            labelSpan.textContent = `${dateLabel} — Total: ${dayTotal} AMD`;
-          } else {
-            labelSpan.textContent = dateLabel;
-          }
+          labelSpan.textContent = isOwner ? `${dateLabel} — Total: ${dayTotal} AMD` : dateLabel;
 
           const chevronSpan = document.createElement("span");
           chevronSpan.className = "chevron";
@@ -369,26 +340,23 @@
           innerUl.className = "archive-orders";
           innerUl.style.display = isTodayGroup ? "block" : "none";
 
-          group.orders
-            // NEWEST first inside each day
-            .sort((a, b) => b.ts - a.ts)
-            .forEach(entry => {
-              const o = entry.data;
-              const orderLi = document.createElement("li");
-              orderLi.className = "order-item";
-              orderLi.innerHTML = buildOrderCardHtml(o, entry.ts);
+          group.orders.sort((a,b) => b.ts - a.ts).forEach(entry => {
+            const o = entry.data;
+            const orderLi = document.createElement("li");
+            orderLi.className = "order-item";
+            orderLi.innerHTML = buildOrderCardHtml(o, entry.ts);
 
-              if (isOwner) {
-                const delBtn = document.createElement("button");
-                delBtn.textContent = "Delete";
-                delBtn.className = "done-btn";
-                delBtn.style.background = "#7f8c8d";
-                delBtn.onclick = () => deleteArchiveOrder(entry.id);
-                orderLi.appendChild(delBtn);
-              }
+            if (isOwner) {
+              const delBtn = document.createElement("button");
+              delBtn.textContent = "Delete";
+              delBtn.className = "done-btn";
+              delBtn.style.background = "#7f8c8d";
+              delBtn.onclick = () => deleteArchiveOrder(entry.id);
+              orderLi.appendChild(delBtn);
+            }
 
-              innerUl.appendChild(orderLi);
-            });
+            innerUl.appendChild(orderLi);
+          });
 
           headerBtn.addEventListener("click", () => {
             const isHidden = innerUl.style.display === "none";
@@ -417,10 +385,7 @@
     }
 
     async function deleteAllArchive() {
-      if (!isOwner) {
-        alert("Only owners can delete all archived orders.");
-        return;
-      }
+      if (!isOwner) return alert("Only owners can delete all archived orders.");
       if (!confirm("Are you sure you want to delete ALL archived orders?")) return;
 
       try {
@@ -435,10 +400,7 @@
     }
 
     async function deleteArchiveOrder(id) {
-      if (!isOwner) {
-        alert("Only owners can delete archived orders.");
-        return;
-      }
+      if (!isOwner) return alert("Only owners can delete archived orders.");
       if (!confirm("Delete this archived order?")) return;
 
       try {
@@ -458,7 +420,7 @@
       document.getElementById("deleteAllBtn").style.display =
         currentView === "archive" && isOwner ? "inline-block" : "none";
 
-      let query = db.collection(collectionName).orderBy("createdAt", "asc");
+      const query = db.collection(collectionName).orderBy("createdAt", "asc");
 
       unsubscribeListener = query.onSnapshot(renderOrders, err => {
         console.error("listen error", err);
@@ -473,13 +435,13 @@
       addForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const email = document.getElementById("staffEmail").value.trim().toLowerCase();
-        const role = document.getElementById("staffRole").value;
         if (!email) return;
 
         try {
-          await db.collection("staff").doc(email).set({ email, role });
+          // store role if you want; but access is same anyway
+          await db.collection("staff").doc(email).set({ email, role: "staff" });
           document.getElementById("staffEmail").value = "";
-          alert("Staff role added/updated.");
+          alert("Staff added/updated.");
         } catch (err) {
           alert(err.message);
         }
@@ -490,10 +452,9 @@
         snap.forEach(doc => {
           const data = doc.data();
           const email = data.email || doc.id;
-          const role = data.role || "viewer";
 
           const li = document.createElement("li");
-          li.textContent = `${email} — ${role}`;
+          li.textContent = `${email}`;
 
           if (!OWNER_EMAILS.includes(email)) {
             const delBtn = document.createElement("button");
@@ -508,9 +469,7 @@
         });
       });
 
-      if (isOwner && currentView === "active") {
-        staffSection.style.display = "block";
-      }
+      staffSection.style.display = "block";
     }
 
     async function deleteStaff(email) {
@@ -522,60 +481,57 @@
       }
     }
 
-    auth.onAuthStateChanged(async user => {
+    async function requireAllowedUser(user) {
       if (!user) {
         window.location = "index.html";
-        return;
+        return false;
       }
 
-      const email = user.email.toLowerCase();
+      const email = (user.email || "").toLowerCase();
       document.getElementById("who").textContent = email;
       isOwner = OWNER_EMAILS.includes(email);
 
-      if (!isOwner) {
-        try {
-          const doc = await db.collection("staff").doc(email).get();
-          if (!doc.exists) {
-            await auth.signOut();
-            window.location = "index.html";
-            return;
-          }
-          const role = doc.data().role;
-
-          // Only viewer role is allowed here; order takers go to order page
-          if (role !== "viewer") {
-            window.location = "order.html";
-            return;
-          }
-        } catch (err) {
-          console.error(err);
-          await auth.signOut();
-          window.location = "index.html";
-          return;
-        }
-      } else {
+      if (isOwner) {
         document.getElementById("totalsSection").style.display = "block";
         setupStaffManagement();
-        if (currentView === "active") {
-          document.getElementById("staffSection").style.display = "block";
-        }
+        return true;
       }
 
-      listenToCollection();
+      // Non-owners must exist in staff collection
+      try {
+        const doc = await db.collection("staff").doc(email).get();
+        if (!doc.exists) {
+          await auth.signOut();
+          window.location = "index.html";
+          return false;
+        }
+        return true;
+      } catch (err) {
+        console.error(err);
+        await auth.signOut();
+        window.location = "index.html";
+        return false;
+      }
+    }
+
+    auth.onAuthStateChanged(async user => {
+      const ok = await requireAllowedUser(user);
+      if (ok) listenToCollection();
     });
 
     document.getElementById("logoutBtn").addEventListener("click", () => {
       auth.signOut().then(() => window.location = "index.html");
     });
 
+    document.getElementById("homeBtn").addEventListener("click", () => {
+      window.location = "home.html";
+    });
+
     document.getElementById("activeTab").addEventListener("click", () => {
       currentView = "active";
       document.getElementById("activeTab").classList.add("active");
       document.getElementById("archiveTab").classList.remove("active");
-      if (isOwner) {
-        document.getElementById("totalsSection").style.display = "block";
-        document.getElementById("staffSection").style.display = "block";
-      }
+      if (isOwner) document.getElementById("totalsSection").style.display = "block";
       listenToCollection();
     });
 
@@ -584,7 +540,6 @@
       document.getElementById("archiveTab").classList.add("active");
       document.getElementById("activeTab").classList.remove("active");
       document.getElementById("totalsSection").style.display = "none";
-      document.getElementById("staffSection").style.display = "none";
       listenToCollection();
     });
 
