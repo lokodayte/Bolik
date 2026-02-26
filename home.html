@@ -1,1 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bubble Tea — Home</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .home-actions {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .home-actions button {
+      border: none;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 16px;
+      cursor: pointer;
+      background: #1f7aef;
+      color: #fff;
+    }
+    .home-actions button.secondary {
+      background: #2ecc71;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h2>Bubble Tea — Home</h2>
+    <div>
+      <span id="who"></span>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </header>
 
+  <main class="card">
+    <h3>Choose what you want to do</h3>
+
+    <div class="home-actions">
+      <button id="goOrder">Take Order</button>
+      <button id="goBoard" class="secondary">Orders Board (Kitchen)</button>
+    </div>
+
+    <p id="msg" class="muted"></p>
+  </main>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="firebase.js"></script>
+
+  <script>
+    const OWNER_EMAILS = [
+      "b.sargsyan@student.uwcdilijan.am",
+      "e.mosoian@student.uwcdilijan.am"
+    ];
+
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    async function requireAllowedUser(user) {
+      if (!user) {
+        window.location = "index.html";
+        return false;
+      }
+
+      const email = (user.email || "").toLowerCase();
+      document.getElementById("who").textContent = email;
+
+      if (OWNER_EMAILS.includes(email)) return true;
+
+      // Non-owners must exist in staff collection
+      try {
+        const doc = await db.collection("staff").doc(email).get();
+        if (!doc.exists) {
+          await auth.signOut();
+          window.location = "index.html";
+          return false;
+        }
+        return true;
+      } catch (err) {
+        console.error(err);
+        await auth.signOut();
+        window.location = "index.html";
+        return false;
+      }
+    }
+
+    auth.onAuthStateChanged(async (user) => {
+      await requireAllowedUser(user);
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      auth.signOut().then(() => window.location = "index.html");
+    });
+
+    document.getElementById("goOrder").addEventListener("click", () => {
+      window.location = "order.html";
+    });
+
+    document.getElementById("goBoard").addEventListener("click", () => {
+      window.location = "view.html";
+    });
+  </script>
+</body>
+</html>
